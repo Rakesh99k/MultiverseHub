@@ -1,116 +1,62 @@
 "use client";
-import { useEffect, useState } from "react";
-import SockJS from "sockjs-client";
-import { Client } from "@stomp/stompjs";
 
-let stompClient = null;
+import { useState, useEffect } from "react";
+import Link from "next/link";
 
-export default function Lobby() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [username, setUsername] = useState("");
-  const [tempName, setTempName] = useState("");
-  const [isConnected, setIsConnected] = useState(false);
-  const [isJoined, setIsJoined] = useState(false);
+export default function LobbyPage() {
+  const [lobbies, setLobbies] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  // Fetch all lobbies on mount
   useEffect(() => {
-    const socket = new SockJS("http://localhost:8080/ws");
-
-    stompClient = new Client({
-      webSocketFactory: () => socket,
-      reconnectDelay: 5000,
-      debug: (str) => console.log(str),
-      onConnect: () => {
-        console.log("✅ Connected to WebSocket");
-        setIsConnected(true);
-
-        stompClient.subscribe("/topic/greetings", (message) => {
-          setMessages((prev) => [...prev, message.body]);
-        });
-      },
-    });
-
-    stompClient.activate();
-
-    return () => {
-      if (stompClient) stompClient.deactivate();
-    };
+    fetch("http://localhost:8080/api/lobbies")
+      .then((res) => res.json())
+      .then((data) => {
+        setLobbies(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
-  const joinLobby = () => {
-    if (tempName.trim().length >= 3) {
-      setUsername(tempName.trim());
-      setIsJoined(true);
-      stompClient.publish({
-        destination: "/app/hello",
-        body: `🔔 ${tempName} joined the lobby`,
+  // Create a new lobby
+  const createLobby = () => {
+    fetch("http://localhost:8080/api/lobbies", { method: "POST" })
+      .then((res) => res.json())
+      .then((newLobby) => {
+        setLobbies((prev) => [...prev, newLobby]);
       });
-    } else {
-      alert("Name must be at least 3 characters long!");
-    }
-  };
-
-  const sendMessage = () => {
-    if (stompClient && input.trim() !== "" && username) {
-      stompClient.publish({
-        destination: "/app/hello",
-        body: `${username}: ${input}`,
-      });
-      setInput("");
-    }
   };
 
   return (
-    <div style={{ padding: "20px" }}>
-      <h1>🕹️ Lobby Chat</h1>
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Available Lobbies</h1>
 
-      {/* Join lobby */}
-      {!isJoined && (
-        <div style={{ marginBottom: "15px" }}>
-          <input
-            type="text"
-            placeholder="Enter your name"
-            value={tempName}
-            onChange={(e) => setTempName(e.target.value)}
-            style={{ padding: "5px", marginRight: "10px" }}
-          />
-          <button onClick={joinLobby}>Join Lobby</button>
-        </div>
-      )}
-
-      {/* Messages */}
-      <div
-        style={{
-          border: "1px solid #ccc",
-          height: "300px",
-          padding: "10px",
-          marginBottom: "10px",
-          overflowY: "auto",
-        }}
+      <button
+        onClick={createLobby}
+        className="bg-green-500 text-white px-4 py-2 rounded mb-4"
       >
-        {messages.map((msg, idx) => (
-          <p key={idx}>{msg}</p>
-        ))}
-      </div>
+        ➕ Create New Lobby
+      </button>
 
-      {/* Input + Send */}
-      {isJoined && (
-        <div>
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type message..."
-            style={{ padding: "5px", marginRight: "10px" }}
-          />
-          <button onClick={sendMessage}>Send</button>
-        </div>
+      {loading ? (
+        <p>Loading lobbies...</p>
+      ) : lobbies.length === 0 ? (
+        <p>No lobbies available. Create one!</p>
+      ) : (
+        <ul className="space-y-2">
+          {lobbies.map((lobby) => (
+            <li key={lobby.id} className="p-3 border rounded bg-gray-50">
+              <p className="font-semibold">Lobby ID: {lobby.id}</p>
+              <Link
+                href={`/lobby/${lobby.id}`}
+                className="text-blue-600 underline"
+              >
+                Join Lobby
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
-
-      {/* Connection status */}
-      <p style={{ marginTop: "10px", color: isConnected ? "green" : "red" }}>
-        {isConnected ? "🟢 Connected" : "🔴 Connecting..."}
-      </p>
     </div>
   );
 }
