@@ -1,59 +1,18 @@
 "use client";
-import { useEffect, useState } from "react";
-import SockJS from "sockjs-client";
-import { Client } from "@stomp/stompjs";
+import Link from "next/link";
 
 export default function ChatPage() {
-  const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState([]);
-  const [stompClient, setStompClient] = useState(null);
-
-  useEffect(() => {
-    const client = new Client({
-      webSocketFactory: () => new SockJS("http://localhost:8080/ws"),
-      onConnect: () => {
-        client.subscribe("/topic/greetings", (msg) => {
-          if (msg.body) {
-            setMessages((prev) => [...prev, msg.body]);
-          }
-        });
-      },
-    });
-    client.activate();
-    setStompClient(client);
-
-    return () => {
-      client.deactivate();
-    };
-  }, []);
-
-  const sendMessage = () => {
-    if (stompClient && stompClient.connected && message.trim() !== "") {
-      stompClient.publish({ destination: "/app/hello", body: message });
-      setMessage("");
-    }
-  };
-
   return (
-    <div style={{ padding: "20px" }}>
-      <h1>💬 Chat Room</h1>
-
-      <div style={{ border: "1px solid #ccc", padding: "10px", height: "200px", overflowY: "scroll" }}>
-        {messages.map((msg, i) => (
-          <p key={i}>{msg}</p>
-        ))}
+    <div className="mx-auto max-w-3xl p-6">
+      <h1 className="mb-3 text-3xl font-bold">Chat</h1>
+      <p className="mb-4 text-zinc-600">
+        Global chat was replaced with lobby-scoped chat. Open any lobby to chat with connected players.
+      </p>
+      <div className="flex gap-3">
+        <Link href="/lobby" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+          Go to Lobbies
+        </Link>
       </div>
-
-      <input
-        type="text"
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        placeholder="Type a message..."
-        style={{ marginTop: "10px", padding: "5px", width: "70%" }}
-      />
-      <button onClick={sendMessage} style={{ marginLeft: "10px" }}>
-        Send
-      </button>
     </div>
   );
 }

@@ -17,6 +17,14 @@ public class TicTacToeService implements GameService {
     }
 
     @Override
+    public void createGame(String gameId, String playerX, String playerO) {
+        GameState state = new GameState();
+        state.setPlayerX(playerX);
+        state.setPlayerO(playerO);
+        games.putIfAbsent(gameId, state);
+    }
+
+    @Override
     public GameState getGame(String gameId) {
         return games.get(gameId);
     }
@@ -39,11 +47,52 @@ public class TicTacToeService implements GameService {
 
         if (checkWinner(b, symbol)) {
             state.setWinner(symbol);
+        } else if (isBoardFull(b)) {
+            state.setWinner("DRAW");
         } else {
             state.switchPlayer();
         }
 
         return state;
+    }
+
+    @Override
+    public GameState makeMoveByPlayer(String gameId, int row, int col, String playerName) {
+        GameState state = games.get(gameId);
+        if (state == null) return null;
+
+        if (state.getWinner() != null) return state; // already ended
+
+        String symbol = state.symbolForPlayer(playerName);
+        if (symbol == null) return state; // player not in this game
+        if (!symbol.equals(state.getCurrentPlayer())) return state; // not their turn
+
+        String[][] b = state.getBoard();
+        if (row < 0 || row > 2 || col < 0 || col > 2) return state;
+        if (!"-".equals(b[row][col])) return state; // already occupied
+
+        b[row][col] = symbol;
+
+        if (checkWinner(b, symbol)) {
+            state.setWinner(symbol);
+        } else if (isBoardFull(b)) {
+            state.setWinner("DRAW");
+        } else {
+            state.switchPlayer();
+        }
+
+        return state;
+    }
+
+    @Override
+    public void resetGame(String gameId) {
+        GameState state = games.get(gameId);
+        if (state != null) state.reset();
+    }
+
+    @Override
+    public boolean deleteGame(String gameId) {
+        return games.remove(gameId) != null;
     }
 
     private boolean checkWinner(String[][] b, String p) {
@@ -53,5 +102,12 @@ public class TicTacToeService implements GameService {
         }
         return (p.equals(b[0][0]) && p.equals(b[1][1]) && p.equals(b[2][2])) ||
                 (p.equals(b[0][2]) && p.equals(b[1][1]) && p.equals(b[2][0]));
+    }
+
+    private boolean isBoardFull(String[][] b) {
+        for (String[] row : b)
+            for (String cell : row)
+                if ("-".equals(cell)) return false;
+        return true;
     }
 }

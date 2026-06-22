@@ -2,6 +2,7 @@ package com.multiplayer.backend.controller;
 
 import com.multiplayer.backend.model.Lobby;
 import com.multiplayer.backend.service.LobbyService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.web.bind.annotation.*;
@@ -18,8 +19,10 @@ public class RoomController {
 
     // REST: join a specific room in a lobby
     @PostMapping("/{lobbyId}/join")
-    public Lobby joinRoom(@PathVariable String lobbyId, @RequestParam String playerName) {
-        return lobbyService.joinLobby(lobbyId, playerName);
+    public ResponseEntity<Lobby> joinRoom(@PathVariable String lobbyId, @RequestParam String playerName) {
+        Lobby lobby = lobbyService.joinLobby(lobbyId, playerName);
+        if (lobby == null) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(lobby);
     }
 
     // WebSocket: join lobby room
@@ -29,10 +32,6 @@ public class RoomController {
         // message format: lobbyId:playerName
         String[] parts = message.split(":");
         if (parts.length != 2) return null;
-
-        String lobbyId = parts[0];
-        String playerName = parts[1];
-
-        return lobbyService.joinLobby(lobbyId, playerName);
+        return lobbyService.joinLobby(parts[0], parts[1]);
     }
 }
