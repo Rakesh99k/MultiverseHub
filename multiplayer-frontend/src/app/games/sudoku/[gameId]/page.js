@@ -103,15 +103,43 @@ export default function SudokuGamePage() {
     }
   }
 
+  // Replace the requestHint function
+
   async function requestHint() {
     if (!selectedCell) {
-      setError("Select a cell for hint");
+      setError("Select a cell to get a hint");
+      return;
+    }
+
+    const { row, col } = selectedCell;
+
+    // Guard: cannot hint a fixed clue cell
+    if (game?.fixed?.[row][col]) {
+      setError("That cell is already a clue — select an empty cell");
+      return;
+    }
+
+    // Guard: cannot hint an already correctly filled cell
+    if (game?.board?.[row][col] !== 0 &&
+        game?.board?.[row][col] === game?.solution?.[row][col]) {
+      setError("That cell is already correct");
+      return;
+    }
+
+    if (!playerName.trim()) {
+      setError("Set your player name first");
       return;
     }
 
     try {
-      const hint = await sudokuApi.hint(gameId, selectedCell.row, selectedCell.col);
-      const updated = await sudokuApi.move(gameId, playerName.trim(), hint.row, hint.col, hint.value);
+      const hint = await sudokuApi.hint(gameId, row, col);
+      const updated = await sudokuApi.move(
+          gameId,
+          playerName.trim(),
+          hint.row,
+          hint.col,
+          hint.value
+      );
       setGame(updated);
       setError("");
     } catch (err) {
