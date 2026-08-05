@@ -68,9 +68,10 @@ public class GameController {
     // Reset / rematch — clears board but keeps player assignments
     @PostMapping("/tictactoe/{gameId}/reset")
     public ResponseEntity<GameState> resetGame(@PathVariable String gameId) {
-        GameState state = ticTacToeService.getGame(gameId);
-        if (state == null) return ResponseEntity.notFound().build();
+        GameState check = ticTacToeService.getGame(gameId);
+        if (check == null) return ResponseEntity.notFound().build();
         ticTacToeService.resetGame(gameId);
+        GameState state = ticTacToeService.getGame(gameId);   // get AFTER reset
         messagingTemplate.convertAndSend("/topic/tictactoe/" + gameId, state);
         return ResponseEntity.ok(state);
     }

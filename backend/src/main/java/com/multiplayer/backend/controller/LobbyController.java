@@ -19,7 +19,12 @@ public class LobbyController {
         this.lobbyService = lobbyService;
     }
 
-    // Create a new lobby (validates name)
+    // ─── REST Endpoints ───────────────────────────────────────────────────────
+
+    /**
+     * Create a new lobby.
+     * 400 if name is blank.
+     */
     @PostMapping
     public ResponseEntity<Lobby> createLobby(@RequestParam String name) {
         Lobby lobby = lobbyService.createLobby(name);
@@ -27,13 +32,23 @@ public class LobbyController {
         return ResponseEntity.ok(lobby);
     }
 
-    // Get all lobbies, optionally filtered to available only
+    /**
+     * Get all lobbies.
+     * Pass ?available=true to get only WAITING + not full lobbies.
+     */
     @GetMapping
-    public List<Lobby> getAllLobbies(@RequestParam(defaultValue = "false") boolean available) {
-        return available ? lobbyService.getAvailableLobbies() : lobbyService.getAllLobbies();
+    public List<Lobby> getAllLobbies(
+            @RequestParam(defaultValue = "false") boolean available
+    ) {
+        return available
+                ? lobbyService.getAvailableLobbies()
+                : lobbyService.getAllLobbies();
     }
 
-    // Get a specific lobby — 404 if not found
+    /**
+     * Get a specific lobby.
+     * 404 if not found.
+     */
     @GetMapping("/{id}")
     public ResponseEntity<Lobby> getLobby(@PathVariable String id) {
         Lobby lobby = lobbyService.getLobby(id);
@@ -41,33 +56,57 @@ public class LobbyController {
         return ResponseEntity.ok(lobby);
     }
 
-    // Join a lobby — 400 if full, not found, or blank name
+    /**
+     * Join a lobby.
+     * 400 if full, already in game, blank name, or not found.
+     */
     @PostMapping("/{id}/join")
-    public ResponseEntity<Lobby> joinLobby(@PathVariable String id, @RequestParam String playerName) {
+    public ResponseEntity<Lobby> joinLobby(
+            @PathVariable String id,
+            @RequestParam String playerName
+    ) {
         Lobby lobby = lobbyService.joinLobby(id, playerName);
         if (lobby == null) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(lobby);
     }
 
-    // Leave a lobby
+    /**
+     * Leave a lobby.
+     * 400 if playerName blank.
+     * 404 if lobby not found.
+     */
     @PostMapping("/{id}/leave")
-    public ResponseEntity<Lobby> leaveLobby(@PathVariable String id, @RequestParam String playerName) {
-        Lobby lobby = lobbyService.getLobby(id);
+    public ResponseEntity<Lobby> leaveLobby(
+            @PathVariable String id,
+            @RequestParam String playerName
+    ) {
+        if (playerName == null || playerName.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        Lobby lobby = lobbyService.leaveLobby(id, playerName);
         if (lobby == null) return ResponseEntity.notFound().build();
-        lobby.getPlayers().remove(playerName);
         return ResponseEntity.ok(lobby);
     }
 
-    // Start game — creates TicTacToe (default) or Chess game linked to lobby players
+    /**
+     * Start a game for this lobby.
+     * ?game=tictactoe (default) | chess | sudoku
+     * 400 if not enough players or lobby not in WAITING state.
+     */
     @PostMapping("/{id}/start")
-    public ResponseEntity<Lobby> startGame(@PathVariable String id,
-                                           @RequestParam(defaultValue = "tictactoe") String game) {
+    public ResponseEntity<Lobby> startGame(
+            @PathVariable String id,
+            @RequestParam(defaultValue = "tictactoe") String game
+    ) {
         Lobby lobby = lobbyService.startGame(id, game);
         if (lobby == null) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(lobby);
     }
 
-    // Delete a lobby — 404 if not found
+    /**
+     * Delete a lobby.
+     * 404 if not found.
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteLobby(@PathVariable String id) {
         boolean deleted = lobbyService.deleteLobby(id);
@@ -75,19 +114,30 @@ public class LobbyController {
         return ResponseEntity.ok("Lobby " + id + " deleted.");
     }
 
-    // ---------- WEBSOCKET MAPPINGS ----------
+    // ─── WebSocket Endpoints ──────────────────────────────────────────────────
 
+    /**
+     * WebSocket: create lobby.
+     * Send to /app/lobby/create with lobby name as payload.
+     * Broadcasts updated lobby list to /topic/lobbies.
+     */
     @MessageMapping("/lobby/create")
     @SendTo("/topic/lobbies")
     public Lobby wsCreateLobby(String name) {
         return lobbyService.createLobby(name);
     }
 
+    /**
+     * WebSocket: join lobby.
+     * Send to /app/lobby/join with payload "lobbyId:playerName".
+     * Broadcasts updated lobby to /topic/lobbies.
+     */
     @MessageMapping("/lobby/join")
     @SendTo("/topic/lobbies")
     public Lobby wsJoinLobby(String message) {
-        String[] parts = message.split(":");
+        if (message == null) return null;
+        String[] parts = message.split(":", 2);
         if (parts.length != 2) return null;
-        return lobbyService.joinLobby(parts[0], parts[1]);
+        return lobbyService.joinLobby(parts[0].trim(), parts[1].trim());
     }
 }
