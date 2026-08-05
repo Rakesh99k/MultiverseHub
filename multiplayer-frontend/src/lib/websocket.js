@@ -1,3 +1,5 @@
+// filename: src/lib/websocket.js
+
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 
@@ -13,43 +15,28 @@ function safeParse(message) {
 }
 
 export function createRealtimeClient({ onConnect, onDisconnect, onError } = {}) {
-  // topic → handler mapping (source of truth)
-  const subscriptions = new Map();
-  // topic → active STOMP subscription
+  const subscriptions    = new Map();
   const activeSubscriptions = new Map();
-  // track if onConnect has been called for initial setup
-  let initialConnectDone = false;
 
   const client = new Client({
     webSocketFactory: () => new SockJS(WS_URL),
-    reconnectDelay: 2500,
+    reconnectDelay: 3000,
     debug: () => {},
 
     onConnect: () => {
-      // Re-subscribe all known topics (handles reconnect cleanly)
-      subscriptions.forEach((handler, topic) => {
-        // Unsubscribe stale subscription if it exists
-        if (activeSubscriptions.has(topic)) {
-          try {
-            activeSubscriptions.get(topic).unsubscribe();
-          } catch {
-            // ignore
-          }
-          activeSubscriptions.delete(topic);
-        }
+      // Clear stale active subscriptions
+      activeSubscriptions.clear();
 
-        // Create fresh subscription
-        const sub = client.subscribe(topic, (message) => {
-          handler(safeParse(message));
+      // Re-subscribe everything
+      subscriptions.forEach((handler, topic) => {
+        const sub = client.subscribe(topic, (msg) => {
+          handler(safeParse(msg));
         });
         activeSubscriptions.set(topic, sub);
       });
 
-      // Only call the caller's onConnect once (for initial setup)
-      if (!initialConnectDone) {
-        initialConnectDone = true;
-        onConnect?.();
-      }
+      // Always call onConnect — let caller decide what to do
+      onConnect?.();
     },
 
     onStompError: (frame) => {
@@ -61,17 +48,13 @@ export function createRealtimeClient({ onConnect, onDisconnect, onError } = {}) 
     },
 
     onDisconnect: () => {
-      // Clear active subscriptions — they are invalid after disconnect
       activeSubscriptions.clear();
       onDisconnect?.();
     },
   });
 
-  const api = {
-    activate() {
-      client.activate();
-    },
-
+  return {
+    activate()  { client.activate(); },
     deactivate() {
       subscriptions.clear();
       activeSubscriptions.clear();
@@ -79,22 +62,16 @@ export function createRealtimeClient({ onConnect, onDisconnect, onError } = {}) 
     },
 
     subscribe(topic, handler) {
+      // Always update handler (in case it changed)
       subscriptions.set(topic, handler);
 
-      // If already connected, subscribe immediately
       if (client.connected) {
-        // Remove any existing subscription for this topic
+        // Unsubscribe old if exists
         if (activeSubscriptions.has(topic)) {
-          try {
-            activeSubscriptions.get(topic).unsubscribe();
-          } catch {
-            // ignore
-          }
+          try { activeSubscriptions.get(topic).unsubscribe(); } catch (_) {}
+          activeSubscriptions.delete(topic);
         }
-
-        const sub = client.subscribe(topic, (message) => {
-          handler(safeParse(message));
-        });
+        const sub = client.subscribe(topic, (msg) => handler(safeParse(msg)));
         activeSubscriptions.set(topic, sub);
       }
     },
@@ -102,30 +79,19 @@ export function createRealtimeClient({ onConnect, onDisconnect, onError } = {}) 
     unsubscribe(topic) {
       subscriptions.delete(topic);
       if (activeSubscriptions.has(topic)) {
-        try {
-          activeSubscriptions.get(topic).unsubscribe();
-        } catch {
-          // ignore
-        }
+        try { activeSubscriptions.get(topic).unsubscribe(); } catch (_) {}
         activeSubscriptions.delete(topic);
       }
     },
 
     publish(destination, body) {
-      if (!client.connected) {
-        console.warn("WebSocket not connected — message dropped:", destination);
-        return;
-      }
+      if (!client.connected) return;
       client.publish({
         destination,
         body: typeof body === "string" ? body : JSON.stringify(body),
       });
     },
 
-    isConnected() {
-      return client.connected;
-    },
+    isConnected() { return client.connected; },
   };
-
-  return api;
 }

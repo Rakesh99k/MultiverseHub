@@ -1,3 +1,4 @@
+
 package com.multiplayer.backend.controller;
 
 import com.multiplayer.backend.model.Lobby;
@@ -5,6 +6,7 @@ import com.multiplayer.backend.service.LobbyService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -14,41 +16,33 @@ import java.util.List;
 public class LobbyController {
 
     private final LobbyService lobbyService;
+    private final SimpMessagingTemplate messagingTemplate;
 
-    public LobbyController(LobbyService lobbyService) {
-        this.lobbyService = lobbyService;
+    public LobbyController(LobbyService lobbyService,
+                           SimpMessagingTemplate messagingTemplate) {
+        this.lobbyService      = lobbyService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     // ─── REST Endpoints ───────────────────────────────────────────────────────
 
-    /**
-     * Create a new lobby.
-     * 400 if name is blank.
-     */
     @PostMapping
     public ResponseEntity<Lobby> createLobby(@RequestParam String name) {
         Lobby lobby = lobbyService.createLobby(name);
         if (lobby == null) return ResponseEntity.badRequest().build();
+        // Broadcast so all lobby-list viewers see the new lobby
+        messagingTemplate.convertAndSend("/topic/lobbies", lobby);
         return ResponseEntity.ok(lobby);
     }
 
-    /**
-     * Get all lobbies.
-     * Pass ?available=true to get only WAITING + not full lobbies.
-     */
     @GetMapping
     public List<Lobby> getAllLobbies(
-            @RequestParam(defaultValue = "false") boolean available
-    ) {
+            @RequestParam(defaultValue = "false") boolean available) {
         return available
                 ? lobbyService.getAvailableLobbies()
                 : lobbyService.getAllLobbies();
     }
 
-    /**
-     * Get a specific lobby.
-     * 404 if not found.
-     */
     @GetMapping("/{id}")
     public ResponseEntity<Lobby> getLobby(@PathVariable String id) {
         Lobby lobby = lobbyService.getLobby(id);
@@ -56,57 +50,48 @@ public class LobbyController {
         return ResponseEntity.ok(lobby);
     }
 
-    /**
-     * Join a lobby.
-     * 400 if full, already in game, blank name, or not found.
-     */
     @PostMapping("/{id}/join")
     public ResponseEntity<Lobby> joinLobby(
             @PathVariable String id,
-            @RequestParam String playerName
-    ) {
+            @RequestParam String playerName) {
         Lobby lobby = lobbyService.joinLobby(id, playerName);
         if (lobby == null) return ResponseEntity.badRequest().build();
+        // Broadcast join event so other tabs see the new player instantly
+        messagingTemplate.convertAndSend("/topic/lobbies", lobby);
+        messagingTemplate.convertAndSend("/topic/lobby/" + id, lobby);
         return ResponseEntity.ok(lobby);
     }
 
-    /**
-     * Leave a lobby.
-     * 400 if playerName blank.
-     * 404 if lobby not found.
-     */
     @PostMapping("/{id}/leave")
     public ResponseEntity<Lobby> leaveLobby(
             @PathVariable String id,
-            @RequestParam String playerName
-    ) {
-        if (playerName == null || playerName.isBlank()) {
+            @RequestParam String playerName) {
+        if (playerName == null || playerName.isBlank())
             return ResponseEntity.badRequest().build();
-        }
         Lobby lobby = lobbyService.leaveLobby(id, playerName);
         if (lobby == null) return ResponseEntity.notFound().build();
+        // Broadcast leave event
+        messagingTemplate.convertAndSend("/topic/lobbies", lobby);
+        messagingTemplate.convertAndSend("/topic/lobby/" + id, lobby);
         return ResponseEntity.ok(lobby);
     }
 
-    /**
-     * Start a game for this lobby.
-     * ?game=tictactoe (default) | chess | sudoku
-     * 400 if not enough players or lobby not in WAITING state.
-     */
     @PostMapping("/{id}/start")
     public ResponseEntity<Lobby> startGame(
             @PathVariable String id,
-            @RequestParam(defaultValue = "tictactoe") String game
-    ) {
+            @RequestParam(defaultValue = "tictactoe") String game) {
         Lobby lobby = lobbyService.startGame(id, game);
         if (lobby == null) return ResponseEntity.badRequest().build();
+
+        // ✅ KEY FIX: Broadcast to BOTH topics so all tabs get notified
+        // /topic/lobbies  → lobby list page updates
+        // /topic/lobby/{id} → lobby detail page gets the gameId + IN_GAME status
+        messagingTemplate.convertAndSend("/topic/lobbies", lobby);
+        messagingTemplate.convertAndSend("/topic/lobby/" + id, lobby);
+
         return ResponseEntity.ok(lobby);
     }
 
-    /**
-     * Delete a lobby.
-     * 404 if not found.
-     */
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteLobby(@PathVariable String id) {
         boolean deleted = lobbyService.deleteLobby(id);
@@ -116,22 +101,12 @@ public class LobbyController {
 
     // ─── WebSocket Endpoints ──────────────────────────────────────────────────
 
-    /**
-     * WebSocket: create lobby.
-     * Send to /app/lobby/create with lobby name as payload.
-     * Broadcasts updated lobby list to /topic/lobbies.
-     */
     @MessageMapping("/lobby/create")
     @SendTo("/topic/lobbies")
     public Lobby wsCreateLobby(String name) {
         return lobbyService.createLobby(name);
     }
 
-    /**
-     * WebSocket: join lobby.
-     * Send to /app/lobby/join with payload "lobbyId:playerName".
-     * Broadcasts updated lobby to /topic/lobbies.
-     */
     @MessageMapping("/lobby/join")
     @SendTo("/topic/lobbies")
     public Lobby wsJoinLobby(String message) {
