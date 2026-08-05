@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ExportHistory">
+    <option name="exports">
+      <list>
+        <ExportEntry>
+          <option name="fileCount" value="21" />
+          <option name="filePaths">
+            <list>
+              <option value="multiplayer-frontend/.gitignore" />
+              <option value="multiplayer-frontend/README.md" />
+              <option value="multiplayer-frontend/eslint.config.mjs" />
+              <option value="multiplayer-frontend/jsconfig.json" />
+              <option value="multiplayer-frontend/next.config.mjs" />
+              <option value="multiplayer-frontend/package.json" />
+              <option value="multiplayer-frontend/postcss.config.mjs" />
+              <option value="multiplayer-frontend/src/app/chat/page.js" />
+              <option value="multiplayer-frontend/src/app/games/chess/[gameId]/page.js" />
+              <option value="multiplayer-frontend/src/app/games/sudoku/[gameId]/page.js" />
+              <option value="multiplayer-frontend/src/app/games/tictactoe/[gameId]/page.js" />
+              <option value="multiplayer-frontend/src/app/globals.css" />
+              <option value="multiplayer-frontend/src/app/layout.js" />
+              <option value="multiplayer-frontend/src/app/lobby/[id]/page.js" />
+              <option value="multiplayer-frontend/src/app/lobby/[lobbyId]/page.js" />
+              <option value="multiplayer-frontend/src/app/lobby/page.js" />
+              <option value="multiplayer-frontend/src/app/page.js" />
+              <option value="multiplayer-frontend/src/app/providers.js" />
+              <option value="multiplayer-frontend/src/context/SessionContext.js" />
+              <option value="multiplayer-frontend/src/lib/api.js" />
+              <option value="multiplayer-frontend/src/lib/websocket.js" />
+            </list>
+          </option>
+          <option name="sizeBytes" value="58390" />
+          <option name="summary" value="21 files, 57.0 KB, ~17,163 tokens" />
+          <option name="timestamp" value="1785872266553" />
+          <option name="tokens" value="17163" />
+        </ExportEntry>
+      </list>
+    </option>
+  </component>
+</project>
