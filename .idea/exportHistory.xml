@@ -4,6 +4,85 @@
     <option name="exports">
       <list>
         <ExportEntry>
+          <option name="fileCount" value="23" />
+          <option name="filePaths">
+            <list>
+              <option value="multiplayer-frontend/.gitignore" />
+              <option value="multiplayer-frontend/README.md" />
+              <option value="multiplayer-frontend/eslint.config.mjs" />
+              <option value="multiplayer-frontend/jsconfig.json" />
+              <option value="multiplayer-frontend/next.config.mjs" />
+              <option value="multiplayer-frontend/package.json" />
+              <option value="multiplayer-frontend/postcss.config.mjs" />
+              <option value="multiplayer-frontend/src/app/chat/page.js" />
+              <option value="multiplayer-frontend/src/app/games/chess/[gameId]/page.js" />
+              <option value="multiplayer-frontend/src/app/games/sudoku/[gameId]/page.js" />
+              <option value="multiplayer-frontend/src/app/games/tictactoe/[gameId]/page.js" />
+              <option value="multiplayer-frontend/src/app/globals.css" />
+              <option value="multiplayer-frontend/src/app/layout.js" />
+              <option value="multiplayer-frontend/src/app/lobby/[lobbyId]/page.js" />
+              <option value="multiplayer-frontend/src/app/lobby/page.js" />
+              <option value="multiplayer-frontend/src/app/page.js" />
+              <option value="multiplayer-frontend/src/app/providers.js" />
+              <option value="multiplayer-frontend/src/components/GameOverModal.js" />
+              <option value="multiplayer-frontend/src/components/Navbar.js" />
+              <option value="multiplayer-frontend/src/components/ToastProvider.js" />
+              <option value="multiplayer-frontend/src/context/SessionContext.js" />
+              <option value="multiplayer-frontend/src/lib/api.js" />
+              <option value="multiplayer-frontend/src/lib/websocket.js" />
+            </list>
+          </option>
+          <option name="sizeBytes" value="122676" />
+          <option name="summary" value="23 files, 119.8 KB, ~31,352 tokens" />
+          <option name="timestamp" value="1791051161022" />
+          <option name="tokens" value="31352" />
+        </ExportEntry>
+        <ExportEntry>
+          <option name="fileCount" value="3" />
+          <option name="filePaths">
+            <list>
+              <option value="backend/.gitignore" />
+              <option value="backend/API_FOR_FRONTEND.md" />
+              <option value="backend/pom.xml" />
+            </list>
+          </option>
+          <option name="sizeBytes" value="14477" />
+          <option name="summary" value="3 files, 14.1 KB, ~4,747 tokens" />
+          <option name="timestamp" value="1791051053460" />
+          <option name="tokens" value="4747" />
+        </ExportEntry>
+        <ExportEntry>
+          <option name="fileCount" value="20" />
+          <option name="filePaths">
+            <list>
+              <option value="backend/src/main/java/com/multiplayer/backend/BackendApplication.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/config/CorsConfig.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/config/GlobalExceptionHandler.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/config/WebSocketConfig.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/controller/ChatController.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/controller/ChessController.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/controller/GameController.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/controller/GameWebSocketController.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/controller/LobbyController.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/controller/SudokuController.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/model/ChessGameState.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/model/GameState.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/model/Lobby.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/model/LobbyStatus.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/model/SudokuGameState.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/service/ChessService.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/service/GameService.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/service/LobbyService.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/service/SudokuService.java" />
+              <option value="backend/src/main/java/com/multiplayer/backend/service/TicTacToeService.java" />
+            </list>
+          </option>
+          <option name="sizeBytes" value="81018" />
+          <option name="summary" value="20 files, 79.1 KB, ~19,847 tokens" />
+          <option name="timestamp" value="1791050982640" />
+          <option name="tokens" value="19847" />
+        </ExportEntry>
+        <ExportEntry>
           <option name="fileCount" value="21" />
           <option name="filePaths">
             <list>
