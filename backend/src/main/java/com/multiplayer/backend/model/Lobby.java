@@ -1,12 +1,12 @@
 package com.multiplayer.backend.model;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Lobby {
     private String id;
     private String name;
-    private List<String> players = new ArrayList<>();
+    private List<String> players = new CopyOnWriteArrayList<>();
     private LobbyStatus status = LobbyStatus.WAITING;
     private String gameId;
 
@@ -23,7 +23,7 @@ public class Lobby {
 
     public void setId(String id) { this.id = id; }
     public void setName(String name) { this.name = name; }
-    public void setPlayers(List<String> players) { this.players = players; }
+    public void setPlayers(List<String> players) { this.players = new CopyOnWriteArrayList<>(players); }
     public void setStatus(LobbyStatus status) { this.status = status; }
     public void setGameId(String gameId) { this.gameId = gameId; }
 }
