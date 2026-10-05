@@ -74,6 +74,16 @@ public class SudokuController {
         return ResponseEntity.ok(Map.of("row", row, "col", col, "value", val));
     }
 
+    // Check if a specific cell is correct (without revealing the solution)
+    @GetMapping("/{gameId}/check")
+    public ResponseEntity<Map<String, Object>> checkCell(@PathVariable String gameId,
+                                                         @RequestParam int row,
+                                                         @RequestParam int col) {
+        Boolean correct = sudokuService.isCellCorrect(gameId, row, col);
+        if (correct == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(Map.of("row", row, "col", col, "correct", correct));
+    }
+
     // Validate the current board — returns list of wrong cells as "row,col"
     @GetMapping("/{gameId}/validate")
     public ResponseEntity<Map<String, Object>> validate(@PathVariable String gameId) {
