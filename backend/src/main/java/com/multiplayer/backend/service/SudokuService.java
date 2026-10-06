@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Sudoku service: generates puzzles, validates moves, tracks per-player progress.
@@ -14,13 +15,12 @@ import java.util.concurrent.ConcurrentMap;
 public class SudokuService {
 
     private final ConcurrentMap<String, SudokuGameState> games = new ConcurrentHashMap<>();
-    private final Random random = new Random();
 
     /**
      * Create a new Sudoku game.
-     * @param gameId    unique id
+     * @param gameId     unique id
      * @param difficulty "easy" (40 clues), "medium" (32), "hard" (26)
-     * @param mode      "collaborative" or "competitive"
+     * @param mode       "collaborative" or "competitive"
      */
     public SudokuGameState createGame(String gameId, String difficulty, String mode) {
         if (gameId == null || gameId.isBlank()) return null;
@@ -59,8 +59,10 @@ public class SudokuService {
     public SudokuGameState joinGame(String gameId, String playerName) {
         SudokuGameState s = games.get(gameId);
         if (s == null || playerName == null || playerName.isBlank()) return null;
-        if (!s.getPlayers().contains(playerName)) {
-            s.getPlayers().add(playerName);
+        synchronized (s) {
+            if (!s.getPlayers().contains(playerName)) {
+                s.getPlayers().add(playerName);
+            }
         }
         return s;
     }
@@ -68,36 +70,39 @@ public class SudokuService {
     /**
      * Make a move: place value at (row, col) by playerName.
      * Returns updated state. Move is rejected silently if:
-     *  - game over, cell is fixed (clue), out of range, or value not 1-9
+     *  - game over, cell is fixed (clue), out of range, or value not 0-9
      */
     public SudokuGameState makeMove(String gameId, String playerName, int row, int col, int value) {
         SudokuGameState s = games.get(gameId);
         if (s == null) return null;
-        if ("COMPLETED".equals(s.getStatus())) return s;
-        if (row < 0 || row > 8 || col < 0 || col > 8) return s;
-        if (value < 0 || value > 9) return s; // 0 = erase
-        if (s.getFixed()[row][col]) return s; // cannot overwrite a clue
-        if (playerName == null || playerName.isBlank()) return s;
 
-        s.getBoard()[row][col] = value;
+        synchronized (s) {
+            if ("COMPLETED".equals(s.getStatus())) return s;
+            if (row < 0 || row > 8 || col < 0 || col > 8) return s;
+            if (value < 0 || value > 9) return s;
+            if (s.getFixed()[row][col]) return s;
+            if (playerName == null || playerName.isBlank()) return s;
 
-        boolean correct = (value != 0) && (value == s.getSolution()[row][col]);
-        s.getMoveHistory().add(new SudokuGameState.MoveRecord(playerName, row, col, value, correct));
+            s.getBoard()[row][col] = value;
 
-        if (value != 0 && !correct) {
-            s.setMistakes(s.getMistakes() + 1);
-        }
+            boolean correct = (value != 0) && (value == s.getSolution()[row][col]);
+            s.getMoveHistory().add(new SudokuGameState.MoveRecord(playerName, row, col, value, correct));
 
-        // Check completion
-        if (isBoardComplete(s.getBoard(), s.getSolution())) {
-            s.setStatus("COMPLETED");
-            if ("competitive".equals(s.getMode())) {
-                s.setWinner(playerName);
-            } else {
-                s.setWinner("ALL");
+            if (value != 0 && !correct) {
+                s.setMistakes(s.getMistakes() + 1);
             }
+
+            // Check completion
+            if (isBoardComplete(s.getBoard(), s.getSolution())) {
+                s.setStatus("COMPLETED");
+                if ("competitive".equals(s.getMode())) {
+                    s.setWinner(playerName);
+                } else {
+                    s.setWinner("ALL");
+                }
+            }
+            return s;
         }
-        return s;
     }
 
     /** Get a hint: returns the correct value for a cell (does not place it). */
@@ -105,33 +110,55 @@ public class SudokuService {
         SudokuGameState s = games.get(gameId);
         if (s == null) return null;
         if (row < 0 || row > 8 || col < 0 || col > 8) return null;
-        return s.getSolution()[row][col];
+        synchronized (s) {
+            return s.getSolution()[row][col];
+        }
+    }
+
+    /**
+     * Check if a specific cell is correct.
+     * Returns true if the current value matches the solution, false otherwise.
+     * Returns null if game not found or cell is out of range.
+     */
+    public Boolean isCellCorrect(String gameId, int row, int col) {
+        SudokuGameState s = games.get(gameId);
+        if (s == null) return null;
+        if (row < 0 || row > 8 || col < 0 || col > 8) return null;
+        synchronized (s) {
+            int currentValue = s.getBoard()[row][col];
+            if (currentValue == 0) return false;
+            return currentValue == s.getSolution()[row][col];
+        }
     }
 
     /** Validate current board: returns list of "row,col" strings that are wrong. */
     public List<String> validateBoard(String gameId) {
         SudokuGameState s = games.get(gameId);
         if (s == null) return null;
-        List<String> wrong = new ArrayList<>();
-        for (int r = 0; r < 9; r++) {
-            for (int c = 0; c < 9; c++) {
-                int v = s.getBoard()[r][c];
-                if (v != 0 && v != s.getSolution()[r][c]) {
-                    wrong.add(r + "," + c);
+        synchronized (s) {
+            List<String> wrong = new ArrayList<>();
+            for (int r = 0; r < 9; r++) {
+                for (int c = 0; c < 9; c++) {
+                    int v = s.getBoard()[r][c];
+                    if (v != 0 && v != s.getSolution()[r][c]) {
+                        wrong.add(r + "," + c);
+                    }
                 }
             }
+            return wrong;
         }
-        return wrong;
     }
 
     public boolean resetGame(String gameId) {
         SudokuGameState s = games.get(gameId);
         if (s == null) return false;
-        s.setBoard(deepCopy(s.getInitialBoard()));
-        s.getMoveHistory().clear();
-        s.setMistakes(0);
-        s.setStatus("PLAYING");
-        s.setWinner(null);
+        synchronized (s) {
+            s.setBoard(deepCopy(s.getInitialBoard()));
+            s.getMoveHistory().clear();
+            s.setMistakes(0);
+            s.setStatus("PLAYING");
+            s.setWinner(null);
+        }
         return true;
     }
 
@@ -163,10 +190,11 @@ public class SudokuService {
     }
 
     private boolean fillBoard(int[][] board) {
+        Random random = ThreadLocalRandom.current();
         for (int r = 0; r < 9; r++) {
             for (int c = 0; c < 9; c++) {
                 if (board[r][c] == 0) {
-                    List<Integer> nums = Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9);
+                    List<Integer> nums = new ArrayList<>(Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9));
                     Collections.shuffle(nums, random);
                     for (int n : nums) {
                         if (isValidPlacement(board, r, c, n)) {
@@ -196,6 +224,7 @@ public class SudokuService {
 
     /** Remove cells from a full board to create a puzzle. */
     private int[][] removeCells(int[][] full, int toRemove) {
+        Random random = ThreadLocalRandom.current();
         int[][] puzzle = deepCopy(full);
         List<int[]> cells = new ArrayList<>();
         for (int r = 0; r < 9; r++)
