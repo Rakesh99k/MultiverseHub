@@ -1,5 +1,7 @@
 package com.multiplayer.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,7 +13,7 @@ public class SudokuGameState {
 
     private int[][] board;          // current board (0 = empty)
     private int[][] initialBoard;   // the puzzle as given (immutable cells marked)
-    private int[][] solution;       // the full solution
+    private int[][] solution;       // the full solution — HIDDEN from frontend
     private boolean[][] fixed;      // true = clue cell, cannot be modified
     private List<String> players;
     private String difficulty;      // "easy", "medium", "hard"
@@ -29,11 +31,11 @@ public class SudokuGameState {
     }
 
     public static class MoveRecord {
-        public String playerName;
-        public int row;
-        public int col;
-        public int value;
-        public boolean correct;
+        private String playerName;
+        private int row;
+        private int col;
+        private int value;
+        private boolean correct;
 
         public MoveRecord() {}
         public MoveRecord(String playerName, int row, int col, int value, boolean correct) {
@@ -43,11 +45,21 @@ public class SudokuGameState {
             this.value = value;
             this.correct = correct;
         }
+
         public String getPlayerName() { return playerName; }
+        public void setPlayerName(String playerName) { this.playerName = playerName; }
+
         public int getRow() { return row; }
+        public void setRow(int row) { this.row = row; }
+
         public int getCol() { return col; }
+        public void setCol(int col) { this.col = col; }
+
         public int getValue() { return value; }
+        public void setValue(int value) { this.value = value; }
+
         public boolean isCorrect() { return correct; }
+        public void setCorrect(boolean correct) { this.correct = correct; }
     }
 
     // ---- Getters / Setters ----
@@ -57,7 +69,8 @@ public class SudokuGameState {
     public int[][] getInitialBoard() { return initialBoard; }
     public void setInitialBoard(int[][] initialBoard) { this.initialBoard = initialBoard; }
 
-    // Solution is hidden from frontend by default
+    // Solution is HIDDEN from frontend — never serialized to JSON
+    @JsonIgnore
     public int[][] getSolution() { return solution; }
     public void setSolution(int[][] solution) { this.solution = solution; }
 
