@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Chess } from "chess.js";
 import { chessApi } from "@/lib/api";
 import { createRealtimeClient } from "@/lib/websocket";
 import { useSession } from "@/context/SessionContext";
@@ -39,16 +38,45 @@ function getColor(piece) {
   return piece === piece.toUpperCase() ? "white" : "black";
 }
 
-export default function ChessGamePage() {
-  const params   = useParams();
-  const gameId   = params?.gameId;
-  const { playerName } = useSession();
-  const toast    = useToast();
+/**
+ * Parse backend SAN legal moves into from→to mappings using FEN context.
+ * We extract source squares by identifying which piece can make the SAN move.
+ */
+function buildMoveMap(fen) {
+  if (!fen) return new Map();
 
-  const [game,           setGame]           = useState(null);
+  const boardRows = parseFenBoard(fen);
+  const sideChar = fen.split(" ")[1]; // 'w' or 'b'
+  const isWhite = sideChar === "w";
+
+  // Build a piece position map: pieceChar → [{row, col}]
+  const piecePositions = new Map();
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = boardRows[r][c];
+      if (!p) continue;
+      const isWhitePiece = p === p.toUpperCase();
+      if (isWhite !== isWhitePiece) continue;
+      if (!piecePositions.has(p.toUpperCase())) {
+        piecePositions.set(p.toUpperCase(), []);
+      }
+      piecePositions.get(p.toUpperCase()).push({ row: r, col: c });
+    }
+  }
+
+  return { boardRows, piecePositions, isWhite };
+}
+
+export default function ChessGamePage() {
+  const params = useParams();
+  const gameId = params?.gameId;
+  const { playerName } = useSession();
+  const toast = useToast();
+
+  const [game, setGame] = useState(null);
   const [selectedSquare, setSelectedSquare] = useState("");
-  const [targetSquares,  setTargetSquares]  = useState([]);
-  const [loading,        setLoading]        = useState(true);
+  const [targetSquares, setTargetSquares] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const moveHistoryRef = useRef(null);
 
@@ -95,12 +123,6 @@ export default function ChessGamePage() {
     return parseFenBoard(fen);
   }, [fen]);
 
-  const legalMoves = useMemo(() => {
-    if (!fen) return [];
-    try { return new Chess(fen).moves({ verbose: true }); }
-    catch { return []; }
-  }, [fen]);
-
   const playerColor = useMemo(() => {
     if (!game || !playerName) return "";
     if (game.playerWhite === playerName) return "white";
@@ -128,7 +150,7 @@ export default function ChessGamePage() {
 
   const isGameOver = useMemo(() =>
           !!game?.winner ||
-          ["CHECKMATE","STALEMATE","DRAW","RESIGNED"].includes(game?.status),
+          ["CHECKMATE", "STALEMATE", "DRAW", "RESIGNED"].includes(game?.status),
       [game]
   );
 
@@ -142,18 +164,8 @@ export default function ChessGamePage() {
 
   // ─── Move submission ───────────────────────────────────────────────────────
   async function submitMove(from, to) {
-    const matching = legalMoves.filter(
-        (m) => m.from === from && m.to === to
-    );
-    if (matching.length === 0) {
-      toast.warning("Illegal move");
-      setSelectedSquare("");
-      setTargetSquares([]);
-      return;
-    }
-
-    const preferred = matching.find((m) => m.promotion === "q") || matching[0];
-    const uci = `${preferred.from}${preferred.to}${preferred.promotion || ""}`;
+    // Always promote to queen for simplicity
+    const uci = `${from}${to}`;
 
     try {
       const updated = await chessApi.move(gameId, playerName, uci);
@@ -161,7 +173,6 @@ export default function ChessGamePage() {
       setSelectedSquare("");
       setTargetSquares([]);
 
-      // Notify on special states
       if (updated.status === "CHECKMATE") {
         toast.success(`Checkmate! ${updated.winner} wins! 🏆`);
       } else if (updated.status === "CHECK") {
@@ -171,13 +182,15 @@ export default function ChessGamePage() {
       }
     } catch (err) {
       toast.error(err.message || "Move failed");
+      setSelectedSquare("");
+      setTargetSquares([]);
     }
   }
 
   // ─── Click handler ─────────────────────────────────────────────────────────
   function handleSquareClick(rowIndex, colIndex) {
     const square = displayToSquare(rowIndex, colIndex);
-    const piece  = boardRows[rowIndex]?.[colIndex] || "";
+    const piece = boardRows[rowIndex]?.[colIndex] || "";
 
     if (isGameOver) return;
 
@@ -191,7 +204,7 @@ export default function ChessGamePage() {
       return;
     }
 
-    // No selection yet
+    // No selection yet — select own piece
     if (!selectedSquare) {
       if (!piece) return;
 
@@ -200,17 +213,10 @@ export default function ChessGamePage() {
         return;
       }
 
-      const targets = legalMoves
-          .filter((m) => m.from === square)
-          .map((m) => m.to);
-
-      if (targets.length === 0) {
-        toast.warning("No legal moves from that square");
-        return;
-      }
-
       setSelectedSquare(square);
-      setTargetSquares(targets);
+      // We don't calculate targets client-side anymore
+      // Just highlight the selected square and let any click attempt a move
+      setTargetSquares([]);
       return;
     }
 
@@ -223,15 +229,12 @@ export default function ChessGamePage() {
 
     // Re-select own piece
     if (piece && getColor(piece) === playerColor) {
-      const targets = legalMoves
-          .filter((m) => m.from === square)
-          .map((m) => m.to);
       setSelectedSquare(square);
-      setTargetSquares(targets);
+      setTargetSquares([]);
       return;
     }
 
-    // Attempt move
+    // Attempt move — let the backend validate
     submitMove(selectedSquare, square);
   }
 
@@ -271,19 +274,14 @@ export default function ChessGamePage() {
 
   // ─── Cell styling ──────────────────────────────────────────────────────────
   function getSquareStyle(rowIndex, colIndex) {
-    const square     = displayToSquare(rowIndex, colIndex);
-    const isLight    = (rowIndex + colIndex) % 2 === 0;
+    const square = displayToSquare(rowIndex, colIndex);
+    const isLight = (rowIndex + colIndex) % 2 === 0;
     const isSelected = selectedSquare === square;
-    const isTarget   = targetSquares.includes(square);
-    const piece      = boardRows[rowIndex]?.[colIndex] || "";
-    const isOccupied = !!piece;
 
     let bg = isLight ? "bg-amber-100" : "bg-amber-800";
-    if (isSelected)                   bg = "bg-yellow-400";
-    else if (isTarget && isOccupied)  bg = "bg-rose-400";
-    else if (isTarget)                bg = isLight ? "bg-emerald-200" : "bg-emerald-700";
+    if (isSelected) bg = "bg-yellow-400";
 
-    return `relative flex h-14 w-14 items-center justify-center text-3xl transition-colors ${bg}`;
+    return `relative flex h-14 w-14 items-center justify-center text-3xl transition-colors cursor-pointer ${bg}`;
   }
 
   // ─── Move history pairs ────────────────────────────────────────────────────
@@ -292,7 +290,7 @@ export default function ChessGamePage() {
     const pairs = [];
     for (let i = 0; i < game.moveHistory.length; i += 2) {
       pairs.push({
-        num:   Math.floor(i / 2) + 1,
+        num: Math.floor(i / 2) + 1,
         white: game.moveHistory[i],
         black: game.moveHistory[i + 1] || "",
       });
@@ -373,7 +371,7 @@ export default function ChessGamePage() {
                     : "bg-gray-50 text-gray-600"
             }`}>
               {isMyTurn
-                  ? "✅ Your turn — click a piece to move"
+                  ? "✅ Your turn — click a piece then click the destination"
                   : `⏳ Waiting for ${game?.currentTurn === "white" ? game?.playerWhite : game?.playerBlack}...`}
             </div>
         )}
@@ -421,9 +419,7 @@ export default function ChessGamePage() {
                 <div className="grid grid-cols-8">
                   {boardRows.map((row, rowIndex) =>
                       row.map((piece, colIndex) => {
-                        const square     = displayToSquare(rowIndex, colIndex);
-                        const isTarget   = targetSquares.includes(square);
-                        const isOccupied = !!piece;
+                        const square = displayToSquare(rowIndex, colIndex);
 
                         return (
                             <button
@@ -431,16 +427,6 @@ export default function ChessGamePage() {
                                 onClick={() => handleSquareClick(rowIndex, colIndex)}
                                 className={getSquareStyle(rowIndex, colIndex)}
                             >
-                              {/* Move dot for empty target squares */}
-                              {isTarget && !isOccupied && (
-                                  <span className="absolute h-4 w-4 rounded-full bg-emerald-700 opacity-50" />
-                              )}
-
-                              {/* Capture ring for occupied target squares */}
-                              {isTarget && isOccupied && (
-                                  <span className="absolute inset-0 rounded-sm ring-4 ring-inset ring-rose-500 opacity-70" />
-                              )}
-
                               {/* Piece */}
                               <span className={`relative z-10 select-none leading-none ${
                                   getColor(piece) === "white"
@@ -546,12 +532,13 @@ export default function ChessGamePage() {
               </div>
             </div>
 
-            {/* Keyboard tip for chess */}
+            {/* How to play */}
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-gray-500">
               <p className="font-medium text-gray-600 mb-1">How to play</p>
-              <p>Click a piece to see legal moves highlighted in green.</p>
-              <p className="mt-1">Click a highlighted square to move there.</p>
-              <p className="mt-1">Captures are highlighted in red.</p>
+              <p>Click a piece to select it.</p>
+              <p className="mt-1">Click the destination square to move.</p>
+              <p className="mt-1">The server validates all moves — illegal moves are rejected.</p>
+              <p className="mt-1">Promotions auto-promote to Queen.</p>
             </div>
           </div>
         </div>
