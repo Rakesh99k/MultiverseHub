@@ -9,17 +9,24 @@ import { useSession } from "@/context/SessionContext";
 import { useToast } from "@/components/ToastProvider";
 
 export default function SudokuGamePage() {
-  const params   = useParams();
-  const gameId   = params?.gameId;
+  const params = useParams();
+  const gameId = params?.gameId;
   const { playerName } = useSession();
-  const toast    = useToast();
+  const toast = useToast();
 
-  const [game,         setGame]         = useState(null);
+  const [game, setGame] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null);
-  const [wrongCells,   setWrongCells]   = useState(new Set());
-  const [loading,      setLoading]      = useState(true);
+  const [wrongCells, setWrongCells] = useState(new Set());
+  const [loading, setLoading] = useState(true);
 
-  const boardRef = useRef(null); // for keyboard focus
+  const boardRef = useRef(null);
+
+  // Store selectedCell and game in refs so keyboard handler doesn't cause re-binds
+  const selectedCellRef = useRef(selectedCell);
+  const gameRef = useRef(game);
+
+  useEffect(() => { selectedCellRef.current = selectedCell; }, [selectedCell]);
+  useEffect(() => { gameRef.current = game; }, [game]);
 
   // ─── Load game ─────────────────────────────────────────────────────────────
   const loadGame = useCallback(async (showLoader = false) => {
@@ -58,56 +65,12 @@ export default function SudokuGamePage() {
     sudokuApi.join(gameId, playerName.trim()).then(setGame).catch(() => {});
   }, [gameId, playerName]);
 
-  // ─── Keyboard handler ──────────────────────────────────────────────────────
-  useEffect(() => {
-    function handleKeyDown(e) {
-      // Number keys 1-9
-      if (e.key >= "1" && e.key <= "9") {
-        e.preventDefault();
-        makeMove(parseInt(e.key));
-        return;
-      }
+  // ─── Move action (used by both keyboard and number pad) ────────────────────
+  const makeMove = useCallback(async (value) => {
+    const cell = selectedCellRef.current;
+    const currentGame = gameRef.current;
 
-      // Delete / Backspace = erase
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        makeMove(0);
-        return;
-      }
-
-      // Arrow keys = navigate cells
-      if (!selectedCell) return;
-
-      const { row, col } = selectedCell;
-      let nextRow = row;
-      let nextCol = col;
-
-      if (e.key === "ArrowUp")    { e.preventDefault(); nextRow = Math.max(0, row - 1); }
-      if (e.key === "ArrowDown")  { e.preventDefault(); nextRow = Math.min(8, row + 1); }
-      if (e.key === "ArrowLeft")  { e.preventDefault(); nextCol = Math.max(0, col - 1); }
-      if (e.key === "ArrowRight") { e.preventDefault(); nextCol = Math.min(8, col + 1); }
-
-      if (nextRow !== row || nextCol !== col) {
-        setSelectedCell({ row: nextRow, col: nextCol });
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCell, game]);
-
-  // ─── Computed ──────────────────────────────────────────────────────────────
-  const canEditSelected = useMemo(() => {
-    if (!selectedCell || !game?.fixed) return false;
-    return !game.fixed[selectedCell.row][selectedCell.col];
-  }, [selectedCell, game]);
-
-  const isCompleted = game?.status === "COMPLETED";
-
-  // ─── Actions ───────────────────────────────────────────────────────────────
-  async function makeMove(value) {
-    if (!selectedCell) {
+    if (!cell) {
       toast.info("Select a cell first");
       return;
     }
@@ -117,14 +80,14 @@ export default function SudokuGamePage() {
       return;
     }
 
-    const { row, col } = selectedCell;
+    const { row, col } = cell;
 
-    if (game?.fixed?.[row][col]) {
+    if (currentGame?.fixed?.[row][col]) {
       toast.warning("That cell is a fixed clue — it cannot be changed");
       return;
     }
 
-    if (isCompleted) {
+    if (currentGame?.status === "COMPLETED") {
       toast.info("The puzzle is already completed!");
       return;
     }
@@ -145,8 +108,56 @@ export default function SudokuGamePage() {
     } catch (err) {
       toast.error(err.message || "Move failed");
     }
-  }
+  }, [gameId, playerName, toast]);
 
+  // ─── Keyboard handler — bound ONCE via refs ────────────────────────────────
+  useEffect(() => {
+    function handleKeyDown(e) {
+      // Number keys 1-9
+      if (e.key >= "1" && e.key <= "9") {
+        e.preventDefault();
+        makeMove(parseInt(e.key));
+        return;
+      }
+
+      // Delete / Backspace = erase
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        makeMove(0);
+        return;
+      }
+
+      // Arrow keys = navigate cells
+      const cell = selectedCellRef.current;
+      if (!cell) return;
+
+      const { row, col } = cell;
+      let nextRow = row;
+      let nextCol = col;
+
+      if (e.key === "ArrowUp")    { e.preventDefault(); nextRow = Math.max(0, row - 1); }
+      if (e.key === "ArrowDown")  { e.preventDefault(); nextRow = Math.min(8, row + 1); }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); nextCol = Math.max(0, col - 1); }
+      if (e.key === "ArrowRight") { e.preventDefault(); nextCol = Math.min(8, col + 1); }
+
+      if (nextRow !== row || nextCol !== col) {
+        setSelectedCell({ row: nextRow, col: nextCol });
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [makeMove]);
+
+  // ─── Computed ──────────────────────────────────────────────────────────────
+  const canEditSelected = useMemo(() => {
+    if (!selectedCell || !game?.fixed) return false;
+    return !game.fixed[selectedCell.row][selectedCell.col];
+  }, [selectedCell, game]);
+
+  const isCompleted = game?.status === "COMPLETED";
+
+  // ─── Actions ───────────────────────────────────────────────────────────────
   async function requestHint() {
     if (!selectedCell) {
       toast.info("Select a cell to get a hint");
@@ -160,19 +171,24 @@ export default function SudokuGamePage() {
       return;
     }
 
-    if (game?.board?.[row][col] !== 0 &&
-        game?.board?.[row][col] === game?.solution?.[row][col]) {
-      toast.info("That cell is already correct!");
-      return;
-    }
-
     if (!playerName.trim()) {
       toast.warning("Set your player name first");
       return;
     }
 
+    // Check if cell is already correct via server API (no solution leak)
     try {
-      const hint    = await sudokuApi.hint(gameId, row, col);
+      const checkResult = await sudokuApi.checkCell(gameId, row, col);
+      if (checkResult.correct) {
+        toast.info("That cell is already correct!");
+        return;
+      }
+    } catch {
+      // If check fails, proceed with hint anyway
+    }
+
+    try {
+      const hint = await sudokuApi.hint(gameId, row, col);
       const updated = await sudokuApi.move(
           gameId, playerName.trim(), hint.row, hint.col, hint.value
       );
@@ -211,25 +227,21 @@ export default function SudokuGamePage() {
 
   // ─── Cell styling ──────────────────────────────────────────────────────────
   function getCellStyle(rowIndex, colIndex, value) {
-    const isFixed    = game?.fixed?.[rowIndex][colIndex];
+    const isFixed = game?.fixed?.[rowIndex][colIndex];
     const isSelected = selectedCell?.row === rowIndex && selectedCell?.col === colIndex;
-    const isWrong    = wrongCells.has(`${rowIndex},${colIndex}`);
+    const isWrong = wrongCells.has(`${rowIndex},${colIndex}`);
 
-    // Same 3x3 box as selected
-    const inSameBox  = selectedCell &&
+    const inSameBox = selectedCell &&
         Math.floor(selectedCell.row / 3) === Math.floor(rowIndex / 3) &&
         Math.floor(selectedCell.col / 3) === Math.floor(colIndex / 3);
 
-    // Same row or col as selected
     const inSameLine = selectedCell &&
         (selectedCell.row === rowIndex || selectedCell.col === colIndex);
 
-    // Same value as selected (highlight matching numbers)
-    const sameValue  = selectedCell && value !== 0 &&
+    const sameValue = selectedCell && value !== 0 &&
         game?.board?.[selectedCell.row]?.[selectedCell.col] === value;
 
-    // Thick borders for 3x3 boxes
-    const thickRight  = (colIndex + 1) % 3 === 0 && colIndex !== 8;
+    const thickRight = (colIndex + 1) % 3 === 0 && colIndex !== 8;
     const thickBottom = (rowIndex + 1) % 3 === 0 && rowIndex !== 8;
 
     let bg = "bg-white";
@@ -323,7 +335,6 @@ export default function SudokuGamePage() {
 
           {/* Board */}
           <div>
-            {/* Keyboard hint */}
             <p className="mb-2 text-xs text-gray-400">
               💡 Click a cell then use keyboard (1-9, Delete, Arrow keys)
             </p>
