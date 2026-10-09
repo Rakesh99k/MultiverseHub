@@ -1,13 +1,11 @@
-// filename: src/app/lobby/[lobbyId]/page.js
-
 "use client";
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { lobbyApi } from "../../../lib/api";
-import { createRealtimeClient } from "../../../lib/websocket";
-import { useSession } from "../../../context/SessionContext";
+import { lobbyApi } from "@/lib/api";
+import { createRealtimeClient } from "@/lib/websocket";
+import { useSession } from "@/context/SessionContext";
 
 function resolveGamePath(gameId) {
   if (!gameId) return "/lobby";
@@ -28,6 +26,7 @@ export default function LobbyDetailPage() {
     setActiveLobbyId,
     setActiveGameId,
     setActiveGameType,
+    clearSession,
   } = useSession();
 
   const [lobby,            setLobby]           = useState(null);
@@ -39,19 +38,17 @@ export default function LobbyDetailPage() {
   const [connected,        setConnected]        = useState(false);
   const [redirecting,      setRedirecting]      = useState(false);
 
-  // ─── Refs (always current, safe in callbacks) ─────────────────────────────
+  // ─── Refs ─────────────────────────────────────────────────────────────────
   const realtimeRef     = useRef(null);
   const hasRedirected   = useRef(false);
-  const playerNameRef   = useRef(playerName);   // ← KEY: always current name
-  const lobbyRef        = useRef(null);          // ← always current lobby
+  const playerNameRef   = useRef(playerName);
+  const lobbyRef        = useRef(null);
 
-  // Keep refs in sync with state
   useEffect(() => {
     playerNameRef.current = playerName;
   }, [playerName]);
 
   // ─── Redirect logic ───────────────────────────────────────────────────────
-  // Uses refs — safe to call from WebSocket callbacks
   const tryRedirect = useCallback(
       (lobbyData) => {
         if (!lobbyData)             return;
@@ -63,7 +60,6 @@ export default function LobbyDetailPage() {
         if (!name)                  return;
         if (!lobbyData.players.includes(name)) return;
 
-        // All checks passed — redirect
         hasRedirected.current = true;
         setRedirecting(true);
 
@@ -100,8 +96,11 @@ export default function LobbyDetailPage() {
       setError("");
     } catch (err) {
       setError(err.message || "Unable to load lobby");
+      if (err.message?.includes("Not Found") || err.message?.includes("404")) {
+        clearSession();
+      }
     }
-  }, [lobbyId, applyLobbyUpdate]);
+  }, [lobbyId, applyLobbyUpdate, clearSession]);
 
   // ─── Setup ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -109,32 +108,18 @@ export default function LobbyDetailPage() {
 
     setActiveLobbyId(lobbyId);
 
-    // Initial load
     setLoading(true);
     fetchLobby().finally(() => setLoading(false));
 
-    // WebSocket
+    // WebSocket — subscribe only to this lobby topic
     const realtime = createRealtimeClient({
       onConnect: () => {
         setConnected(true);
 
-        // Subscribe to lobby-specific updates
-        // Backend sends full lobby object here on join/leave/start
         realtime.subscribe(`/topic/lobby/${lobbyId}`, (data) => {
-          console.log("[WS] /topic/lobby/" + lobbyId, data);
           applyLobbyUpdate(data);
         });
 
-        // Subscribe to general lobby updates as fallback
-        realtime.subscribe("/topic/lobbies", (data) => {
-          console.log("[WS] /topic/lobbies", data);
-          // Backend sends single lobby object
-          if (data && data.id === lobbyId) {
-            applyLobbyUpdate(data);
-          }
-        });
-
-        // Chat
         realtime.subscribe(`/topic/lobby/${lobbyId}/chat`, (message) => {
           if (!message) return;
           const text = typeof message === "string"
@@ -154,8 +139,6 @@ export default function LobbyDetailPage() {
     realtimeRef.current = realtime;
     realtime.activate();
 
-    // Polling fallback — every 3 seconds check lobby state
-    // This guarantees redirect even if WebSocket message is missed
     const pollInterval = setInterval(() => {
       if (hasRedirected.current) {
         clearInterval(pollInterval);
@@ -173,7 +156,6 @@ export default function LobbyDetailPage() {
   }, [lobbyId]);
 
   // ─── Re-check redirect when playerName changes ────────────────────────────
-  // e.g. player types name AFTER game already started
   useEffect(() => {
     if (lobbyRef.current) {
       tryRedirect(lobbyRef.current);
@@ -226,7 +208,6 @@ export default function LobbyDetailPage() {
     if (!canStartGame) return;
     try {
       const updated = await lobbyApi.startGame(lobbyId, selectedGameType);
-      // This player redirects immediately from the API response
       applyLobbyUpdate(updated);
     } catch (err) {
       setError(err.message || "Unable to start game");
