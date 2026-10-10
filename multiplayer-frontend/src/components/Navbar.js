@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useSession } from "@/context/SessionContext";
 
 export default function Navbar() {
     const pathname = usePathname();
-    const router   = useRouter();
 
     const {
+        hydrated,
         playerName,
         activeGameId,
         activeGameType,
@@ -25,11 +25,6 @@ export default function Navbar() {
     }
 
     const activeGamePath = getActiveGamePath();
-
-    // Check if we are currently on a game page
-    const isOnGamePage =
-        pathname.includes("/games/") ||
-        pathname.includes("/lobby/");
 
     const gameEmoji = {
         chess:     "♟️",
@@ -53,8 +48,8 @@ export default function Navbar() {
                 <div className="flex items-center gap-1">
                     <NavLink href="/lobby" current={pathname} label="🏠 Lobbies" />
 
-                    {/* Active game link — only shows if in a game */}
-                    {activeGamePath && (
+                    {/* Active game link — only shows if in a game and hydrated */}
+                    {hydrated && activeGamePath && (
                         <NavLink
                             href={activeGamePath}
                             current={pathname}
@@ -64,7 +59,7 @@ export default function Navbar() {
                     )}
 
                     {/* Active lobby link */}
-                    {activeLobbyId && !activeGamePath && (
+                    {hydrated && activeLobbyId && !activeGamePath && (
                         <NavLink
                             href={`/lobby/${activeLobbyId}`}
                             current={pathname}
@@ -75,7 +70,9 @@ export default function Navbar() {
 
                 {/* Right — Player name */}
                 <div className="flex items-center gap-3">
-                    {playerName.trim() ? (
+                    {!hydrated ? (
+                        <div className="h-8 w-8 animate-pulse rounded-full bg-gray-200" />
+                    ) : playerName.trim() ? (
                         <div className="flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 text-sm font-bold text-white">
                 {playerName.trim().charAt(0).toUpperCase()}
