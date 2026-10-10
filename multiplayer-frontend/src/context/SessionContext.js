@@ -23,6 +23,15 @@ function storageSet(key, value) {
     }
 }
 
+function storageRemove(key) {
+    if (typeof window === "undefined") return;
+    try {
+        localStorage.removeItem(key);
+    } catch {
+        // ignore
+    }
+}
+
 export function SessionProvider({ children }) {
     const [playerName, setPlayerNameState] = useState("");
     const [activeLobbyId, setActiveLobbyIdState] = useState("");
@@ -60,6 +69,16 @@ export function SessionProvider({ children }) {
         storageSet("mvh_activeGameType", type);
     }, []);
 
+    // Clear all game/lobby session state (but keep playerName)
+    const clearSession = useCallback(() => {
+        setActiveLobbyIdState("");
+        setActiveGameIdState("");
+        setActiveGameTypeState("");
+        storageRemove("mvh_activeLobbyId");
+        storageRemove("mvh_activeGameId");
+        storageRemove("mvh_activeGameType");
+    }, []);
+
     const value = useMemo(
         () => ({
             hydrated,
@@ -71,6 +90,7 @@ export function SessionProvider({ children }) {
             setActiveGameId,
             activeGameType,
             setActiveGameType,
+            clearSession,
         }),
         [
             hydrated,
@@ -82,6 +102,7 @@ export function SessionProvider({ children }) {
             setActiveGameId,
             activeGameType,
             setActiveGameType,
+            clearSession,
         ]
     );
 
