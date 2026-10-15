@@ -12,6 +12,7 @@ function resolveGamePath(gameId) {
   const lower = gameId.toLowerCase();
   if (lower.startsWith("chess-"))  return `/games/chess/${gameId}`;
   if (lower.startsWith("sudoku-")) return `/games/sudoku/${gameId}`;
+  if (lower.startsWith("trivia-")) return `/games/trivia/${gameId}`;
   return `/games/tictactoe/${gameId}`;
 }
 
@@ -67,6 +68,7 @@ export default function LobbyDetailPage() {
         const lower = lobbyData.gameId.toLowerCase();
         if (lower.startsWith("chess-"))       setActiveGameType("chess");
         else if (lower.startsWith("sudoku-")) setActiveGameType("sudoku");
+        else if (lower.startsWith("trivia-")) setActiveGameType("trivia");
         else                                  setActiveGameType("tictactoe");
 
         const path = resolveGamePath(lobbyData.gameId);
@@ -171,7 +173,7 @@ export default function LobbyDetailPage() {
   const canStartGame = useMemo(() => {
     if (!lobby || !isInLobby)       return false;
     if (lobby.status !== "WAITING") return false;
-    const min = selectedGameType === "sudoku" ? 1 : 2;
+    const min = (selectedGameType === "sudoku" || selectedGameType === "trivia") ? 1 : 2;
     return lobby.players.length >= min;
   }, [lobby, isInLobby, selectedGameType]);
 
@@ -353,6 +355,7 @@ export default function LobbyDetailPage() {
                   <option value="tictactoe">❌ TicTacToe</option>
                   <option value="chess">♟️ Chess</option>
                   <option value="sudoku">🔢 Sudoku</option>
+                  <option value="trivia">🎌 Anime Trivia</option>
                 </select>
               </div>
 
@@ -388,7 +391,7 @@ export default function LobbyDetailPage() {
                 <p className="mt-3 text-xs text-gray-500">
                   {canStartGame
                       ? `✅ Ready! Click Start to begin ${selectedGameType}.`
-                      : `⏳ Need ${selectedGameType === "sudoku" ? 1 : 2} player(s) minimum.`}
+                      : `⏳ Need ${(selectedGameType === "sudoku" || selectedGameType === "trivia") ? 1 : 2} player(s) minimum.`}
                 </p>
             )}
           </div>
@@ -399,7 +402,7 @@ export default function LobbyDetailPage() {
             {/* Players */}
             <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <h2 className="mb-4 text-lg font-semibold text-gray-900">
-                Players ({lobby?.players?.length || 0}/4)
+                Players ({lobby?.players?.length || 0}/8)
               </h2>
 
               {lobby?.players?.length ? (
