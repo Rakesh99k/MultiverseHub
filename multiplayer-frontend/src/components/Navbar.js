@@ -21,6 +21,7 @@ export default function Navbar() {
         const lower = activeGameId.toLowerCase();
         if (lower.startsWith("chess-"))  return `/games/chess/${activeGameId}`;
         if (lower.startsWith("sudoku-")) return `/games/sudoku/${activeGameId}`;
+        if (lower.startsWith("trivia-")) return `/games/trivia/${activeGameId}`;
         return `/games/tictactoe/${activeGameId}`;
     }
 
@@ -30,6 +31,7 @@ export default function Navbar() {
         chess:     "♟️",
         sudoku:    "🔢",
         tictactoe: "❌",
+        trivia:    "🎌",
     }[activeGameType] || "🎮";
 
     return (
