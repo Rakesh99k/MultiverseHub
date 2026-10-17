@@ -19,10 +19,7 @@ async function request(path, options = {}) {
     throw new Error(await parseError(response));
   }
 
-  if (response.status === 204) {
-    return null;
-  }
-
+  if (response.status === 204) return null;
   return response.json();
 }
 
@@ -102,6 +99,25 @@ export const sudokuApi = {
       request(`/api/sudoku/${encodeURIComponent(gameId)}/validate`),
   reset: (gameId) =>
       request(`/api/sudoku/${encodeURIComponent(gameId)}/reset`, { method: "POST" }),
+};
+
+export const triviaApi = {
+  getGame: (gameId) =>
+      request(`/api/trivia/${encodeURIComponent(gameId)}`),
+  join: (gameId, playerName) =>
+      request(
+          `/api/trivia/${encodeURIComponent(gameId)}/join?playerName=${encodeURIComponent(playerName)}`,
+          { method: "POST" }
+      ),
+  start: (gameId) =>
+      request(`/api/trivia/${encodeURIComponent(gameId)}/start`, { method: "POST" }),
+  answer: (gameId, playerName, option) =>
+      request(
+          `/api/trivia/${encodeURIComponent(gameId)}/answer?playerName=${encodeURIComponent(playerName)}&option=${option}`,
+          { method: "POST" }
+      ),
+  reset: (gameId) =>
+      request(`/api/trivia/${encodeURIComponent(gameId)}/reset`, { method: "POST" }),
 };
 
 export { API_BASE_URL };
