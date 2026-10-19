@@ -33,7 +33,7 @@ export default function GameOverModal({
         win:  { bg: "from-emerald-400 to-emerald-600", text: "text-emerald-800", label: "Victory!" },
         loss: { bg: "from-rose-400 to-rose-600",       text: "text-rose-800",   label: "Defeat" },
         draw: { bg: "from-gray-400 to-gray-500",       text: "text-gray-800",   label: "Draw" },
-    }[result];
+    }[result] || { bg: "from-gray-400 to-gray-500", text: "text-gray-800", label: "Draw" };
 
     return (
         <div
@@ -41,12 +41,12 @@ export default function GameOverModal({
             onClick={onClose}
         >
             <div
-                className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
+                className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl transition-all duration-300 transform scale-100"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header with gradient */}
                 <div className={`bg-gradient-to-br ${resultStyle.bg} px-6 py-8 text-center`}>
-                    <div className="text-6xl">{emoji}</div>
+                    <div className="text-6xl animate-bounce duration-1000">{emoji}</div>
                     <p className="mt-2 text-xs font-bold uppercase tracking-wider text-white/80">
                         {resultStyle.label}
                     </p>
@@ -86,7 +86,7 @@ export default function GameOverModal({
                                 onRematch();
                                 onClose();
                             }}
-                            className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
+                            className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 cursor-pointer"
                         >
                             🔄 Play Again
                         </button>
@@ -96,15 +96,15 @@ export default function GameOverModal({
                             onClose();
                             router.push("/lobby");
                         }}
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 cursor-pointer"
                     >
                         ← Back to Lobbies
                     </button>
                     <button
                         onClick={onClose}
-                        className="w-full rounded-lg px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-700"
+                        className="w-full rounded-lg px-4 py-2 text-xs font-medium text-gray-500 hover:text-gray-700 cursor-pointer"
                     >
-                        Stay & Review
+                        Stay & Review Board
                     </button>
                 </div>
             </div>
