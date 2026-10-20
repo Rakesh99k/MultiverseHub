@@ -7,6 +7,7 @@ import { chessApi } from "@/lib/api";
 import { createRealtimeClient } from "@/lib/websocket";
 import { useSession } from "@/context/SessionContext";
 import { useToast } from "@/components/ToastProvider";
+import GameOverModal from "@/components/GameOverModal";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
@@ -38,35 +39,6 @@ function getColor(piece) {
   return piece === piece.toUpperCase() ? "white" : "black";
 }
 
-/**
- * Parse backend SAN legal moves into from→to mappings using FEN context.
- * We extract source squares by identifying which piece can make the SAN move.
- */
-function buildMoveMap(fen) {
-  if (!fen) return new Map();
-
-  const boardRows = parseFenBoard(fen);
-  const sideChar = fen.split(" ")[1]; // 'w' or 'b'
-  const isWhite = sideChar === "w";
-
-  // Build a piece position map: pieceChar → [{row, col}]
-  const piecePositions = new Map();
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      const p = boardRows[r][c];
-      if (!p) continue;
-      const isWhitePiece = p === p.toUpperCase();
-      if (isWhite !== isWhitePiece) continue;
-      if (!piecePositions.has(p.toUpperCase())) {
-        piecePositions.set(p.toUpperCase(), []);
-      }
-      piecePositions.get(p.toUpperCase()).push({ row: r, col: c });
-    }
-  }
-
-  return { boardRows, piecePositions, isWhite };
-}
-
 export default function ChessGamePage() {
   const params = useParams();
   const gameId = params?.gameId;
@@ -77,6 +49,7 @@ export default function ChessGamePage() {
   const [selectedSquare, setSelectedSquare] = useState("");
   const [targetSquares, setTargetSquares] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const moveHistoryRef = useRef(null);
 
@@ -100,7 +73,13 @@ export default function ChessGamePage() {
     const realtime = createRealtimeClient({
       onConnect: () => {
         realtime.subscribe(`/topic/chess/${gameId}`, (data) => {
-          if (data) setGame(data);
+          if (data) {
+            setGame(data);
+            const isOver = ["CHECKMATE", "STALEMATE", "DRAW", "RESIGNED"].includes(data.status);
+            if (isOver) {
+              setModalOpen(true);
+            }
+          }
         });
       },
     });
@@ -154,6 +133,26 @@ export default function ChessGamePage() {
       [game]
   );
 
+  // Modal Computed Props
+  const modalResult = useMemo(() => {
+    if (!game?.winner || game.winner === "DRAW") return "draw";
+    return game.winner === playerColor ? "win" : "loss";
+  }, [game?.winner, playerColor]);
+
+  const modalTitle = useMemo(() => {
+    if (game?.status === "CHECKMATE") return "Checkmate!";
+    if (game?.status === "STALEMATE") return "Stalemate!";
+    if (game?.status === "DRAW") return "Draw Game!";
+    if (game?.status === "RESIGNED") return "Resigned!";
+    return "Match Concluded";
+  }, [game?.status]);
+
+  const modalSubtitle = useMemo(() => {
+    if (game?.winner === "DRAW") return "Stalemate or agreed draw.";
+    const winningPlayer = game?.winner === "white" ? game?.playerWhite : game?.playerBlack;
+    return `Victory belongs to ${winningPlayer}!`;
+  }, [game]);
+
   // ─── Square helpers ────────────────────────────────────────────────────────
   function displayToSquare(rowIndex, colIndex) {
     if (playerColor === "black") {
@@ -164,7 +163,6 @@ export default function ChessGamePage() {
 
   // ─── Move submission ───────────────────────────────────────────────────────
   async function submitMove(from, to) {
-    // Always promote to queen for simplicity
     const uci = `${from}${to}`;
 
     try {
@@ -173,12 +171,10 @@ export default function ChessGamePage() {
       setSelectedSquare("");
       setTargetSquares([]);
 
-      if (updated.status === "CHECKMATE") {
-        toast.success(`Checkmate! ${updated.winner} wins! 🏆`);
+      if (["CHECKMATE", "STALEMATE", "DRAW", "RESIGNED"].includes(updated.status)) {
+        setModalOpen(true);
       } else if (updated.status === "CHECK") {
         toast.warning("Check! ⚠️");
-      } else if (updated.status === "STALEMATE") {
-        toast.info("Stalemate — it's a draw!");
       }
     } catch (err) {
       toast.error(err.message || "Move failed");
@@ -204,7 +200,6 @@ export default function ChessGamePage() {
       return;
     }
 
-    // No selection yet — select own piece
     if (!selectedSquare) {
       if (!piece) return;
 
@@ -214,27 +209,22 @@ export default function ChessGamePage() {
       }
 
       setSelectedSquare(square);
-      // We don't calculate targets client-side anymore
-      // Just highlight the selected square and let any click attempt a move
       setTargetSquares([]);
       return;
     }
 
-    // Deselect
     if (square === selectedSquare) {
       setSelectedSquare("");
       setTargetSquares([]);
       return;
     }
 
-    // Re-select own piece
     if (piece && getColor(piece) === playerColor) {
       setSelectedSquare(square);
       setTargetSquares([]);
       return;
     }
 
-    // Attempt move — let the backend validate
     submitMove(selectedSquare, square);
   }
 
@@ -244,7 +234,8 @@ export default function ChessGamePage() {
     try {
       const updated = await chessApi.resign(gameId, playerName);
       setGame(updated);
-      toast.info("You resigned. Better luck next time!");
+      setModalOpen(true);
+      toast.info("You resigned.");
     } catch (err) {
       toast.error(err.message || "Unable to resign");
     }
@@ -254,6 +245,7 @@ export default function ChessGamePage() {
     try {
       const updated = await chessApi.draw(gameId);
       setGame(updated);
+      setModalOpen(true);
       toast.info("Draw agreed 🤝");
     } catch (err) {
       toast.error(err.message || "Unable to declare draw");
@@ -266,6 +258,7 @@ export default function ChessGamePage() {
       setGame(updated);
       setSelectedSquare("");
       setTargetSquares([]);
+      setModalOpen(false);
       toast.success("Game reset — White goes first!");
     } catch (err) {
       toast.error(err.message || "Unable to reset");
@@ -308,7 +301,6 @@ export default function ChessGamePage() {
     RESIGNED:  { color: "bg-rose-100 text-rose-800",       label: "Resigned" },
   }[game?.status] || { color: "bg-gray-100 text-gray-600", label: game?.status };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
         <div className="flex min-h-screen items-center justify-center">
@@ -319,6 +311,20 @@ export default function ChessGamePage() {
 
   return (
       <div className="mx-auto max-w-6xl p-6">
+
+        <GameOverModal
+            isOpen={modalOpen}
+            title={modalTitle}
+            subtitle={modalSubtitle}
+            emoji={modalResult === "win" ? "🏆" : modalResult === "loss" ? "🏳️" : "🤝"}
+            result={modalResult}
+            stats={[
+              { label: "Your Color", value: playerColor || "Spectator" },
+              { label: "Total Moves", value: `${game?.moveCount || 0}` },
+            ]}
+            onRematch={reset}
+            onClose={() => setModalOpen(false)}
+        />
 
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
@@ -376,17 +382,17 @@ export default function ChessGamePage() {
             </div>
         )}
 
-        {/* Game over banner */}
+        {/* Game over banner (clickable to reopen modal) */}
         {isGameOver && (
-            <div className="mb-4 rounded-xl border border-gray-200 bg-white px-5 py-4 text-center shadow-sm">
+            <div
+                onClick={() => setModalOpen(true)}
+                className="mb-4 rounded-xl border border-gray-200 bg-white px-5 py-4 text-center shadow-sm cursor-pointer hover:bg-gray-50"
+            >
               <p className="text-xl font-bold text-gray-900">
-                {game?.status === "CHECKMATE" && `♟️ Checkmate! ${game.winner} wins!`}
-                {game?.status === "STALEMATE" && "🤝 Stalemate — Draw!"}
-                {game?.status === "DRAW"      && "🤝 Draw agreed!"}
-                {game?.status === "RESIGNED"  && `🏳️ ${game.winner} wins by resignation`}
-              </p>
-              <p className="mt-1 text-sm text-gray-500">
-                {game?.moveCount} moves played
+                {game?.status === "CHECKMATE" && `♟️ Checkmate! ${game.winner} wins! (Review Stats)`}
+                {game?.status === "STALEMATE" && "🤝 Stalemate — Draw! (Review Stats)"}
+                {game?.status === "DRAW"      && "🤝 Draw agreed! (Review Stats)"}
+                {game?.status === "RESIGNED"  && `🏳️ ${game.winner} wins by resignation (Review Stats)`}
               </p>
             </div>
         )}
@@ -395,7 +401,6 @@ export default function ChessGamePage() {
 
           {/* Board with coordinates */}
           <div>
-            {/* File labels — top */}
             <div className="mb-1 flex pl-6">
               {displayFiles.map((f) => (
                   <div key={f} className="flex w-14 items-center justify-center text-xs font-medium text-gray-400">
@@ -405,7 +410,6 @@ export default function ChessGamePage() {
             </div>
 
             <div className="flex">
-              {/* Rank labels — left */}
               <div className="flex flex-col pr-2">
                 {displayRanks.map((r) => (
                     <div key={r} className="flex h-14 items-center justify-center text-xs font-medium text-gray-400 w-4">
@@ -414,7 +418,6 @@ export default function ChessGamePage() {
                 ))}
               </div>
 
-              {/* Board */}
               <div className="overflow-hidden rounded-xl border-2 border-gray-400 shadow-lg">
                 <div className="grid grid-cols-8">
                   {boardRows.map((row, rowIndex) =>
@@ -427,12 +430,11 @@ export default function ChessGamePage() {
                                 onClick={() => handleSquareClick(rowIndex, colIndex)}
                                 className={getSquareStyle(rowIndex, colIndex)}
                             >
-                              {/* Piece */}
-                              <span className={`relative z-10 select-none leading-none ${
-                                  getColor(piece) === "white"
-                                      ? "drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]"
-                                      : "drop-shadow-[0_1px_1px_rgba(255,255,255,0.3)]"
-                              }`}>
+                        <span className={`relative z-10 select-none leading-none ${
+                            getColor(piece) === "white"
+                                ? "drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]"
+                                : "drop-shadow-[0_1px_1px_rgba(255,255,255,0.3)]"
+                        }`}>
                           {PIECES[piece] || ""}
                         </span>
                             </button>
@@ -442,7 +444,6 @@ export default function ChessGamePage() {
                 </div>
               </div>
 
-              {/* Rank labels — right */}
               <div className="flex flex-col pl-2">
                 {displayRanks.map((r) => (
                     <div key={r} className="flex h-14 items-center justify-center text-xs font-medium text-gray-400 w-4">
@@ -452,7 +453,6 @@ export default function ChessGamePage() {
               </div>
             </div>
 
-            {/* File labels — bottom */}
             <div className="mt-1 flex pl-6">
               {displayFiles.map((f) => (
                   <div key={f} className="flex w-14 items-center justify-center text-xs font-medium text-gray-400">
@@ -511,13 +511,13 @@ export default function ChessGamePage() {
                     <>
                       <button
                           onClick={resign}
-                          className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700"
+                          className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 cursor-pointer"
                       >
                         🏳️ Resign
                       </button>
                       <button
                           onClick={declareDraw}
-                          className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+                          className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 cursor-pointer"
                       >
                         🤝 Draw
                       </button>
@@ -525,19 +525,17 @@ export default function ChessGamePage() {
                 )}
                 <button
                     onClick={reset}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 cursor-pointer"
                 >
                   {isGameOver ? "🔄 Play Again" : "🔄 Reset"}
                 </button>
               </div>
             </div>
 
-            {/* How to play */}
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-gray-500">
               <p className="font-medium text-gray-600 mb-1">How to play</p>
               <p>Click a piece to select it.</p>
               <p className="mt-1">Click the destination square to move.</p>
-              <p className="mt-1">The server validates all moves — illegal moves are rejected.</p>
               <p className="mt-1">Promotions auto-promote to Queen.</p>
             </div>
           </div>
