@@ -7,6 +7,7 @@ import { ticTacToeApi } from "@/lib/api";
 import { createRealtimeClient } from "@/lib/websocket";
 import { useSession } from "@/context/SessionContext";
 import { useToast } from "@/components/ToastProvider";
+import GameOverModal from "@/components/GameOverModal";
 
 // ─── Find winning line ────────────────────────────────────────────────────────
 function getWinningCells(board, winner) {
@@ -33,7 +34,6 @@ function getWinningCells(board, winner) {
         board[b[0]][b[1]] === winner &&
         board[c[0]][c[1]] === winner
     ) {
-      // Return as "row,col" strings for easy lookup
       return line.map(([r, c]) => `${r},${c}`);
     }
   }
@@ -49,6 +49,7 @@ export default function TicTacToeGamePage() {
 
   const [game,    setGame]    = useState(null);
   const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
 
   // ─── Load game ─────────────────────────────────────────────────────────────
   const loadGame = useCallback(async (showLoader = false) => {
@@ -72,7 +73,12 @@ export default function TicTacToeGamePage() {
     const realtime = createRealtimeClient({
       onConnect: () => {
         realtime.subscribe(`/topic/tictactoe/${gameId}`, (data) => {
-          if (data) setGame(data);
+          if (data) {
+            setGame(data);
+            if (data.winner) {
+              setModalOpen(true);
+            }
+          }
         });
       },
     });
@@ -101,6 +107,23 @@ export default function TicTacToeGamePage() {
 
   const isFinished = !!game?.winner;
 
+  // Determine modal styling
+  const modalResult = useMemo(() => {
+    if (!game?.winner || game.winner === "DRAW") return "draw";
+    return game.winner === mySymbol ? "win" : "loss";
+  }, [game?.winner, mySymbol]);
+
+  const modalTitle = useMemo(() => {
+    if (game?.winner === "DRAW") return "Draw Game!";
+    return game?.winner === mySymbol ? "Victory!" : "Defeat!";
+  }, [game?.winner, mySymbol]);
+
+  const modalSubtitle = useMemo(() => {
+    if (game?.winner === "DRAW") return "No spaces left on the board.";
+    const winnerName = game?.winner === "X" ? game?.playerX : game?.playerO;
+    return `${winnerName} (${game?.winner}) won the match!`;
+  }, [game]);
+
   // ─── Actions ───────────────────────────────────────────────────────────────
   async function playMove(row, col) {
     if (!playerName.trim()) {
@@ -126,6 +149,9 @@ export default function TicTacToeGamePage() {
     try {
       const updated = await ticTacToeApi.play(gameId, row, col, playerName.trim());
       setGame(updated);
+      if (updated.winner) {
+        setModalOpen(true);
+      }
     } catch (err) {
       toast.error(err.message || "Move failed");
     }
@@ -135,6 +161,7 @@ export default function TicTacToeGamePage() {
     try {
       const updated = await ticTacToeApi.reset(gameId);
       setGame(updated);
+      setModalOpen(false);
       toast.success("Game reset! X goes first.");
     } catch (err) {
       toast.error(err.message || "Reset failed");
@@ -150,18 +177,14 @@ export default function TicTacToeGamePage() {
     let base = "flex h-24 w-24 items-center justify-center rounded-xl text-4xl font-bold transition-all duration-200 ";
 
     if (isWinning) {
-      // Winning cells glow
       base += "bg-emerald-400 text-white shadow-lg scale-105 ";
     } else if (!isEmpty) {
-      // Filled cells
       base += cell === "X"
           ? "bg-blue-100 text-blue-700 "
           : "bg-rose-100 text-rose-700 ";
     } else if (!isFinished && isMyTurn) {
-      // Empty + my turn = hoverable
       base += "bg-white hover:bg-gray-100 cursor-pointer text-gray-300 ";
     } else {
-      // Empty + not my turn or game over
       base += "bg-white text-gray-200 cursor-default ";
     }
 
@@ -179,6 +202,21 @@ export default function TicTacToeGamePage() {
 
   return (
       <div className="mx-auto max-w-4xl p-6">
+
+        {/* GameOverModal */}
+        <GameOverModal
+            isOpen={modalOpen}
+            title={modalTitle}
+            subtitle={modalSubtitle}
+            emoji={modalResult === "win" ? "🏆" : modalResult === "loss" ? "😢" : "🤝"}
+            result={modalResult}
+            stats={[
+              { label: "Your Symbol", value: mySymbol || "Spectator" },
+              { label: "Winner", value: game?.winner === "DRAW" ? "None (Draw)" : `${game?.winner}` },
+            ]}
+            onRematch={resetGame}
+            onClose={() => setModalOpen(false)}
+        />
 
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
@@ -221,14 +259,16 @@ export default function TicTacToeGamePage() {
 
         {/* Turn / result banner */}
         {isFinished ? (
-            <div className={`mb-6 rounded-xl px-5 py-4 text-center font-bold text-lg shadow-sm ${
+            <div className={`mb-6 rounded-xl px-5 py-4 text-center font-bold text-lg shadow-sm cursor-pointer ${
                 game.winner === "DRAW"
                     ? "bg-gray-100 text-gray-700"
                     : "bg-emerald-100 text-emerald-800"
-            }`}>
+            }`}
+                 onClick={() => setModalOpen(true)}
+            >
               {game.winner === "DRAW"
-                  ? "🤝 It's a Draw!"
-                  : `🏆 ${game.winner === mySymbol ? "You win!" : `${game.winner} wins!`}`}
+                  ? "🤝 It's a Draw! (Click to see stats)"
+                  : `🏆 ${game.winner === mySymbol ? "You win!" : `${game.winner} wins!`} (Click to see stats)`}
             </div>
         ) : (
             <div className={`mb-6 rounded-xl px-5 py-3 text-center text-sm font-medium shadow-sm ${
@@ -256,7 +296,6 @@ export default function TicTacToeGamePage() {
                           className={getCellStyle(rowIndex, colIndex, cell)}
                       >
                         {cell === "-" ? (
-                            // Show faint symbol on hover when it's your turn
                             isMyTurn && !isFinished
                                 ? <span className="opacity-0 hover:opacity-30">{mySymbol}</span>
                                 : null
@@ -272,7 +311,7 @@ export default function TicTacToeGamePage() {
         <div className="mt-8 flex justify-center gap-3">
           <button
               onClick={resetGame}
-              className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
+              className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 cursor-pointer"
           >
             {isFinished ? "🔄 Play Again" : "🔄 Reset"}
           </button>
