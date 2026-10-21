@@ -7,6 +7,7 @@ import { sudokuApi } from "@/lib/api";
 import { createRealtimeClient } from "@/lib/websocket";
 import { useSession } from "@/context/SessionContext";
 import { useToast } from "@/components/ToastProvider";
+import GameOverModal from "@/components/GameOverModal";
 
 export default function SudokuGamePage() {
   const params = useParams();
@@ -18,10 +19,10 @@ export default function SudokuGamePage() {
   const [selectedCell, setSelectedCell] = useState(null);
   const [wrongCells, setWrongCells] = useState(new Set());
   const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const boardRef = useRef(null);
 
-  // Store selectedCell and game in refs so keyboard handler doesn't cause re-binds
   const selectedCellRef = useRef(selectedCell);
   const gameRef = useRef(game);
 
@@ -50,7 +51,12 @@ export default function SudokuGamePage() {
     const realtime = createRealtimeClient({
       onConnect: () => {
         realtime.subscribe(`/topic/sudoku/${gameId}`, (data) => {
-          if (data) setGame(data);
+          if (data) {
+            setGame(data);
+            if (data.status === "COMPLETED") {
+              setModalOpen(true);
+            }
+          }
         });
       },
     });
@@ -65,7 +71,7 @@ export default function SudokuGamePage() {
     sudokuApi.join(gameId, playerName.trim()).then(setGame).catch(() => {});
   }, [gameId, playerName]);
 
-  // ─── Move action (used by both keyboard and number pad) ────────────────────
+  // ─── Move action ───────────────────
   const makeMove = useCallback(async (value) => {
     const cell = selectedCellRef.current;
     const currentGame = gameRef.current;
@@ -99,35 +105,28 @@ export default function SudokuGamePage() {
       setGame(updated);
 
       if (updated.status === "COMPLETED") {
-        toast.success(
-            updated.mode === "competitive"
-                ? `🏆 ${updated.winner} wins!`
-                : "🎉 Puzzle solved! Well done everyone!"
-        );
+        setModalOpen(true);
       }
     } catch (err) {
       toast.error(err.message || "Move failed");
     }
   }, [gameId, playerName, toast]);
 
-  // ─── Keyboard handler — bound ONCE via refs ────────────────────────────────
+  // ─── Keyboard handler ─────────────────────────────────
   useEffect(() => {
     function handleKeyDown(e) {
-      // Number keys 1-9
       if (e.key >= "1" && e.key <= "9") {
         e.preventDefault();
         makeMove(parseInt(e.key));
         return;
       }
 
-      // Delete / Backspace = erase
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         makeMove(0);
         return;
       }
 
-      // Arrow keys = navigate cells
       const cell = selectedCellRef.current;
       if (!cell) return;
 
@@ -157,6 +156,22 @@ export default function SudokuGamePage() {
 
   const isCompleted = game?.status === "COMPLETED";
 
+  // Modal Props
+  const modalResult = useMemo(() => {
+    if (game?.mode === "collaborative") return "win"; // Everyone wins in collaborative
+    return game?.winner === playerName.trim() ? "win" : "loss";
+  }, [game, playerName]);
+
+  const modalTitle = useMemo(() => {
+    if (game?.mode === "collaborative") return "Puzzle Solved!";
+    return game?.winner === playerName.trim() ? "Victory!" : "Defeat!";
+  }, [game, playerName]);
+
+  const modalSubtitle = useMemo(() => {
+    if (game?.mode === "collaborative") return "Collaborative team victory! High five! 🙌";
+    return `Winner: ${game?.winner} solved the final block!`;
+  }, [game]);
+
   // ─── Actions ───────────────────────────────────────────────────────────────
   async function requestHint() {
     if (!selectedCell) {
@@ -176,7 +191,6 @@ export default function SudokuGamePage() {
       return;
     }
 
-    // Check if cell is already correct via server API (no solution leak)
     try {
       const checkResult = await sudokuApi.checkCell(gameId, row, col);
       if (checkResult.correct) {
@@ -184,7 +198,7 @@ export default function SudokuGamePage() {
         return;
       }
     } catch {
-      // If check fails, proceed with hint anyway
+      // proceed on check failure
     }
 
     try {
@@ -219,6 +233,7 @@ export default function SudokuGamePage() {
       setGame(updated);
       setWrongCells(new Set());
       setSelectedCell(null);
+      setModalOpen(false);
       toast.success("Board reset to original puzzle");
     } catch (err) {
       toast.error(err.message || "Reset failed");
@@ -266,7 +281,6 @@ export default function SudokuGamePage() {
       hover:bg-blue-100`;
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
         <div className="flex min-h-screen items-center justify-center">
@@ -283,6 +297,20 @@ export default function SudokuGamePage() {
 
   return (
       <div className="mx-auto max-w-6xl p-6">
+
+        <GameOverModal
+            isOpen={modalOpen}
+            title={modalTitle}
+            subtitle={modalSubtitle}
+            emoji="🧩"
+            result={modalResult}
+            stats={[
+              { label: "Difficulty", value: game?.difficulty?.toUpperCase() || "" },
+              { label: "Total Mistakes", value: `${game?.mistakes ?? 0}` },
+            ]}
+            onRematch={resetBoard}
+            onClose={() => setModalOpen(false)}
+        />
 
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
@@ -303,33 +331,20 @@ export default function SudokuGamePage() {
           <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">
           {game?.mode}
         </span>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-              isCompleted
-                  ? "bg-emerald-100 text-emerald-700"
-                  : "bg-blue-100 text-blue-700"
-          }`}>
-          {isCompleted ? "✅ Completed" : "🎮 Playing"}
+          <span
+              onClick={() => isCompleted && setModalOpen(true)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold cursor-pointer ${
+                  isCompleted
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-blue-100 text-blue-700"
+              }`}
+          >
+          {isCompleted ? "✅ Completed (Review Stats)" : "🎮 Playing"}
         </span>
           <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600">
           ❌ Mistakes: {game?.mistakes ?? 0}
         </span>
         </div>
-
-        {/* Completed banner */}
-        {isCompleted && (
-            <div className="mb-6 rounded-xl bg-emerald-50 border border-emerald-200 px-5 py-4 text-center">
-              <p className="text-xl font-bold text-emerald-800">
-                🎉 Puzzle Solved!
-              </p>
-              {game?.winner && (
-                  <p className="mt-1 text-emerald-700">
-                    {game.mode === "competitive"
-                        ? `🏆 Winner: ${game.winner}`
-                        : "Well done everyone!"}
-                  </p>
-              )}
-            </div>
-        )}
 
         <div className="grid gap-6 lg:grid-cols-[auto_1fr]">
 
@@ -416,19 +431,19 @@ export default function SudokuGamePage() {
                 <button
                     onClick={requestHint}
                     disabled={isCompleted}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40 cursor-pointer"
                 >
                   💡 Get Hint
                 </button>
                 <button
                     onClick={validateBoard}
-                    className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+                    className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 cursor-pointer"
                 >
                   ✅ Validate Board
                 </button>
                 <button
                     onClick={resetBoard}
-                    className="rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
+                    className="rounded-lg bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 cursor-pointer"
                 >
                   🔄 Reset Puzzle
                 </button>
