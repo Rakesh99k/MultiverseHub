@@ -7,6 +7,7 @@ import { triviaApi } from "@/lib/api";
 import { createRealtimeClient } from "@/lib/websocket";
 import { useSession } from "@/context/SessionContext";
 import { useToast } from "@/components/ToastProvider";
+import GameOverModal from "@/components/GameOverModal";
 
 const OPTION_LABELS = ["A", "B", "C", "D"];
 const OPTION_COLORS = [
@@ -25,6 +26,7 @@ export default function TriviaGamePage() {
     const [game, setGame] = useState(null);
     const [loading, setLoading] = useState(true);
     const [timeLeft, setTimeLeft] = useState(0);
+    const [modalOpen, setModalOpen] = useState(false);
 
     const timerRef = useRef(null);
 
@@ -49,7 +51,12 @@ export default function TriviaGamePage() {
         const realtime = createRealtimeClient({
             onConnect: () => {
                 realtime.subscribe(`/topic/trivia/${gameId}`, (data) => {
-                    if (data) setGame(data);
+                    if (data) {
+                        setGame(data);
+                        if (data.status === "FINISHED") {
+                            setModalOpen(true);
+                        }
+                    }
                 });
             },
         });
@@ -107,6 +114,31 @@ export default function TriviaGamePage() {
             .map(([name, score], i) => ({ rank: i + 1, name, score }));
     }, [game?.scores]);
 
+    // Modal Props
+    const modalResult = useMemo(() => {
+        if (!sortedLeaderboard.length) return "draw";
+        return sortedLeaderboard[0].name === playerName.trim() ? "win" : "loss";
+    }, [sortedLeaderboard, playerName]);
+
+    const modalTitle = useMemo(() => {
+        if (!sortedLeaderboard.length) return "Quiz Finished";
+        return sortedLeaderboard[0].name === playerName.trim() ? "Victory!" : "Defeat!";
+    }, [sortedLeaderboard, playerName]);
+
+    const modalSubtitle = useMemo(() => {
+        if (!sortedLeaderboard.length) return "";
+        const topScore = sortedLeaderboard[0].score;
+        return `${sortedLeaderboard[0].name} dominated the quiz with ${topScore} points! 👑`;
+    }, [sortedLeaderboard]);
+
+    const modalStats = useMemo(() => {
+        const myScore = game?.scores?.[playerName.trim()] ?? 0;
+        return [
+            { label: "Your Score", value: `${myScore} pts` },
+            { label: "Winner Score", value: sortedLeaderboard.length ? `${sortedLeaderboard[0].score} pts` : "0" },
+        ];
+    }, [game, playerName, sortedLeaderboard]);
+
     // ─── Actions ───────────────────────────────────────────────────────────────
     async function startGame() {
         try {
@@ -137,13 +169,13 @@ export default function TriviaGamePage() {
         try {
             const updated = await triviaApi.reset(gameId);
             setGame(updated);
+            setModalOpen(false);
             toast.success("Game reset!");
         } catch (err) {
             toast.error(err.message || "Reset failed");
         }
     }
 
-    // ─── Render ────────────────────────────────────────────────────────────────
     if (loading) {
         return (
             <div className="flex min-h-screen items-center justify-center">
@@ -165,6 +197,17 @@ export default function TriviaGamePage() {
     return (
         <div className="mx-auto max-w-4xl p-6">
 
+            <GameOverModal
+                isOpen={modalOpen}
+                title={modalTitle}
+                subtitle={modalSubtitle}
+                emoji={modalResult === "win" ? "🏆" : "🎌"}
+                result={modalResult}
+                stats={modalStats}
+                onRematch={resetGame}
+                onClose={() => setModalOpen(false)}
+            />
+
             {/* Header */}
             <div className="mb-6 flex items-center justify-between">
                 <h1 className="text-3xl font-bold text-gray-900">🎌 Anime Trivia</h1>
@@ -182,9 +225,11 @@ export default function TriviaGamePage() {
             isWaiting ? "bg-blue-100 text-blue-700" :
                 isPlaying ? "bg-emerald-100 text-emerald-700" :
                     isRoundEnd ? "bg-amber-100 text-amber-700" :
-                        "bg-purple-100 text-purple-700"
-        }`}>
-          {game?.status}
+                        "bg-purple-100 text-purple-700 cursor-pointer"
+        }`}
+              onClick={() => isFinished && setModalOpen(true)}
+        >
+          {isFinished ? "FINISHED (Review Final Leaderboard)" : game?.status}
         </span>
                 {!isWaiting && !isFinished && (
                     <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
@@ -207,7 +252,6 @@ export default function TriviaGamePage() {
                         {game?.totalRounds} rounds • {game?.timeLimitSeconds}s per question • First correct gets bonus!
                     </p>
 
-                    {/* Players */}
                     <div className="mb-6 flex flex-wrap justify-center gap-3">
                         {game?.players?.map((p, i) => (
                             <div
@@ -231,7 +275,7 @@ export default function TriviaGamePage() {
                         <button
                             onClick={startGame}
                             disabled={!game?.players?.length}
-                            className="rounded-xl bg-emerald-600 px-8 py-3 text-lg font-bold text-white shadow-lg hover:bg-emerald-700 disabled:opacity-40"
+                            className="rounded-xl bg-emerald-600 px-8 py-3 text-lg font-bold text-white shadow-lg hover:bg-emerald-700 disabled:opacity-40 cursor-pointer"
                         >
                             🚀 Start Quiz
                         </button>
@@ -244,7 +288,6 @@ export default function TriviaGamePage() {
             {/* ─── PLAYING / ROUND_END SCREEN ──────────────────────────────────── */}
             {(isPlaying || isRoundEnd) && q && (
                 <>
-                    {/* Timer bar */}
                     {isPlaying && (
                         <div className="mb-4">
                             <div className="flex items-center justify-between mb-1">
@@ -268,7 +311,6 @@ export default function TriviaGamePage() {
                         </div>
                     )}
 
-                    {/* Question card */}
                     <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                         <div className="mb-1 flex items-center gap-2">
               <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
@@ -283,7 +325,6 @@ export default function TriviaGamePage() {
                         </h2>
                     </div>
 
-                    {/* Answer options */}
                     <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                         {q.options?.map((opt, i) => {
                             let style = `${OPTION_COLORS[i].bg} text-white`;
@@ -332,7 +373,6 @@ export default function TriviaGamePage() {
                         })}
                     </div>
 
-                    {/* Round end info */}
                     {isRoundEnd && (
                         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
                             <p className="text-sm font-semibold text-amber-800 mb-2">
@@ -365,7 +405,6 @@ export default function TriviaGamePage() {
                         </div>
                     )}
 
-                    {/* Playing status */}
                     {isPlaying && !hasAnswered && (
                         <p className="text-center text-sm text-gray-500">
                             Pick your answer!
@@ -386,10 +425,9 @@ export default function TriviaGamePage() {
                     <p className="text-5xl mb-4">🏆</p>
                     <h2 className="text-2xl font-bold text-gray-900 mb-1">Quiz Complete!</h2>
                     <p className="text-gray-500 mb-6">
-                        {game?.totalRounds} rounds played
+                        Click any button below or click the upper-left status bubble to review final points.
                     </p>
 
-                    {/* Final leaderboard */}
                     <div className="mx-auto max-w-md space-y-2 mb-6">
                         {sortedLeaderboard.map((entry) => (
                             <div
@@ -397,24 +435,16 @@ export default function TriviaGamePage() {
                                 className={`flex items-center gap-3 rounded-xl px-4 py-3 ${
                                     entry.rank === 1
                                         ? "bg-amber-50 ring-2 ring-amber-300"
-                                        : entry.rank === 2
-                                            ? "bg-gray-50 ring-1 ring-gray-200"
-                                            : "bg-gray-50"
+                                        : "bg-gray-50"
                                 }`}
                             >
                 <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-                    entry.rank === 1 ? "bg-amber-400 text-white" :
-                        entry.rank === 2 ? "bg-gray-400 text-white" :
-                            entry.rank === 3 ? "bg-amber-700 text-white" :
-                                "bg-gray-200 text-gray-600"
+                    entry.rank === 1 ? "bg-amber-400 text-white" : "bg-gray-200 text-gray-600"
                 }`}>
                   {entry.rank === 1 ? "👑" : entry.rank}
                 </span>
                                 <span className="flex-1 text-left font-semibold text-gray-800">
                   {entry.name}
-                                    {entry.name === playerName?.trim() && (
-                                        <span className="ml-1 text-xs text-blue-500">(You)</span>
-                                    )}
                 </span>
                                 <span className="text-lg font-bold text-indigo-700">
                   {entry.score}
@@ -423,18 +453,26 @@ export default function TriviaGamePage() {
                         ))}
                     </div>
 
-                    <button
-                        onClick={resetGame}
-                        className="rounded-xl bg-indigo-600 px-8 py-3 text-lg font-bold text-white shadow-lg hover:bg-indigo-700"
-                    >
-                        🔄 Play Again
-                    </button>
+                    <div className="flex flex-col gap-2 max-w-md mx-auto">
+                        <button
+                            onClick={() => setModalOpen(true)}
+                            className="rounded-xl bg-emerald-600 px-8 py-3 text-lg font-bold text-white shadow-md hover:bg-emerald-700 cursor-pointer"
+                        >
+                            📊 Show Game Summary
+                        </button>
+                        <button
+                            onClick={resetGame}
+                            className="rounded-xl bg-indigo-600 px-8 py-3 text-lg font-bold text-white shadow-md hover:bg-indigo-700 cursor-pointer"
+                        >
+                            🔄 Play Again
+                        </button>
+                    </div>
                 </div>
             )}
 
             {/* ─── LIVE LEADERBOARD (during game) ──────────────────────────────── */}
             {!isWaiting && !isFinished && (
-                <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm mt-4">
                     <h2 className="mb-3 text-sm font-semibold text-gray-700">
                         📊 Live Leaderboard
                     </h2>
@@ -448,7 +486,7 @@ export default function TriviaGamePage() {
                                         : "bg-gray-50"
                                 }`}
                             >
-                                <p className="text-xs text-gray-400">{entry.name}</p>
+                                <p className="text-xs text-gray-400 truncate">{entry.name}</p>
                                 <p className="text-lg font-bold text-indigo-700">{entry.score}</p>
                             </div>
                         ))}
